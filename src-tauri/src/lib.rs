@@ -4,6 +4,7 @@ mod callback_server;
 mod game;
 mod commands;
 mod resources;
+mod news;
 
 use database::Database;
 use discord_auth::DiscordAuth;
@@ -48,7 +49,7 @@ pub fn run() {
         server_updates_path: std::env::var("RESOURCE_UPDATES_PATH")
             .unwrap_or_else(|_| "/updates".to_string()),
     };
-    
+
     let resource_manager = Arc::new(
         ResourceManager::new(resource_config)
             .expect("Impossible d'initialiser le gestionnaire de ressources")
@@ -101,6 +102,7 @@ pub fn run() {
             commands::has_custom_skin,
             commands::get_skin_model,
             commands::update_skin_model,
+            commands::fetch_news,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

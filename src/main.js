@@ -25,14 +25,40 @@ const skinStatus = document.getElementById("skin-status");
 const modelSteve = document.getElementById("model-steve");
 const modelAlex = document.getElementById("model-alex");
 
+// Gestion des news / notifications
+const btnNavNews = document.getElementById("btn-nav-news");
+const btnNavAccueil = document.getElementById("btn-nav-accueil");
+const modalNews = document.getElementById("modal-news");
+const newsListeEl = document.getElementById("news-liste");
+const btnCloseNewsModal = document.getElementById("btn-close-news-modal");
+const apercuNews = document.getElementById("apercu-news");
+const apercuNewsCover = document.getElementById("apercu-news-cover");
+const apercuNewsTitre = document.getElementById("apercu-news-titre");
+const apercuNewsExtrait = document.getElementById("apercu-news-extrait");
+
+// Éléments pour les onglets
+const ongletAccueil = document.getElementById("onglet-accueil");
+const ongletNews = document.getElementById("onglet-news");
+const newsListeOngletEl = document.getElementById("news-liste-onglet");
+const btnNotifications = document.getElementById("btn-notifications");
+const notifDropdown = document.getElementById("notif-dropdown");
+const notifListeEl = document.getElementById("notif-liste");
+const notifDot = document.getElementById("notif-dot");
+
 let discordUserCourant = null;
 let usernameCourant = null;
 let skinModel = "default";
+let newsCourantes = [];
 
 // Ecrans de connexion/pseudo : format vertical.
 // Ecran de jeu : format fenetre classique, comme un launcher normal.
 const TAILLE_VERTICALE = { largeur: 440, hauteur: 680 };
-const TAILLE_JEU = { largeur: 1100, hauteur: 650 };
+const TAILLE_JEU = { largeur: 1310, hauteur: 690 };
+
+// Clé locale (persistée entre lancements) qui retient l'id de la dernière
+// news déjà vue par ce joueur, pour savoir s'il faut afficher le point
+// rouge de notification.
+const CLE_DERNIERE_NEWS_VUE = "idc_derniere_news_vue";
 
 async function definirTailleFenetre(largeur, hauteur) {
   try {
@@ -348,6 +374,214 @@ async function deleteCustomSkin() {
   }
 }
 
+// ============================================================================
+// Gestion des News / Notifications
+// ============================================================================
+
+// Petite fonction d'échappement HTML : les news viennent du site admin, pas
+// besoin qu'un titre/contenu mal formé casse le DOM (ou pire, injecte du HTML).
+function echapperHtml(texte) {
+  const div = document.createElement("div");
+  div.textContent = texte ?? "";
+  return div.innerHTML;
+}
+
+function formaterDateNews(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+// Affiche une liste de news dans un conteneur donné.
+// `avecContenu` : true pour la modal complète (bouton "Lire la suite"),
+// false pour le mini-dropdown de notifications (juste titre + date).
+function rendreListeNews(conteneur, items, avecContenu) {
+  conteneur.innerHTML = "";
+
+  if (!items.length) {
+    conteneur.innerHTML = `<p class="news-vide">Aucune news pour le moment.</p>`;
+    return;
+  }
+
+  for (const item of items) {
+    const el = document.createElement("article");
+    el.className = "news-item";
+
+    el.innerHTML = `
+      ${item.cover_url ? `<img class="news-item-cover" src="${item.cover_url}" alt="" />` : ""}
+      <div class="news-item-corps">
+        <p class="news-item-date">${formaterDateNews(item.created_at)}</p>
+        <h3 class="news-item-titre">${echapperHtml(item.title)}</h3>
+        <p class="news-item-extrait">${echapperHtml(item.excerpt)}</p>
+        ${avecContenu && item.content ? `
+          <p class="news-item-contenu cache">${echapperHtml(item.content)}</p>
+          <button type="button" class="news-item-toggle">Lire la suite</button>
+        ` : ""}
+      </div>
+    `;
+
+    if (avecContenu && item.content) {
+      const btnToggle = el.querySelector(".news-item-toggle");
+      const contenuEl = el.querySelector(".news-item-contenu");
+      btnToggle.addEventListener("click", () => {
+        const estCache = contenuEl.classList.toggle("cache");
+        btnToggle.textContent = estCache ? "Lire la suite" : "Réduire";
+      });
+    }
+
+    conteneur.appendChild(el);
+  }
+}
+
+// Marque toutes les news actuellement chargées comme "vues" (retire le
+// point rouge de notification jusqu'à la prochaine news publiée).
+function marquerNewsCommeVues() {
+  if (!newsCourantes.length) return;
+  localStorage.setItem(CLE_DERNIERE_NEWS_VUE, newsCourantes[0].id);
+  notifDot.classList.add("cache");
+}
+
+// Met à jour l'aperçu sur l'accueil + le point de notification + le
+// mini-dropdown, à partir de `newsCourantes` déjà chargées.
+function mettreAJourApercuEtNotifs() {
+  if (!newsCourantes.length) {
+    apercuNews.classList.add("cache");
+    notifDot.classList.add("cache");
+    rendreListeNews(notifListeEl, [], false);
+    return;
+  }
+
+  const derniere = newsCourantes[0];
+
+  apercuNewsTitre.textContent = derniere.title;
+  if (apercuNewsExtrait) {
+    apercuNewsExtrait.textContent = derniere.excerpt || '';
+  }
+  if (derniere.cover_url) {
+    apercuNewsCover.src = derniere.cover_url;
+    apercuNewsCover.classList.remove("cache");
+  } else {
+    apercuNewsCover.classList.add("cache");
+  }
+  apercuNews.classList.remove("cache");
+
+  const derniereVue = localStorage.getItem(CLE_DERNIERE_NEWS_VUE);
+  if (derniereVue !== derniere.id) {
+    notifDot.classList.remove("cache");
+  } else {
+    notifDot.classList.add("cache");
+  }
+
+  rendreListeNews(notifListeEl, newsCourantes.slice(0, 5), false);
+}
+
+// Récupère les news depuis le site admin via la commande Tauri fetch_news
+// (elle-même vers index.php?api=news, voir news.rs côté Rust).
+async function chargerNews() {
+  try {
+    const news = await invoke("fetch_news");
+    newsCourantes = Array.isArray(news) ? news : [];
+    mettreAJourApercuEtNotifs();
+  } catch (e) {
+    console.warn("Impossible de charger les news :", e);
+  }
+}
+
+function fermerModalNews() {
+  modalNews.classList.add("cache");
+}
+
+function ouvrirModalNews() {
+  rendreListeNews(newsListeEl, newsCourantes, true);
+  modalNews.classList.remove("cache");
+  notifDropdown.classList.add("cache");
+  marquerNewsCommeVues();
+}
+
+// ============================================================================
+// Gestion des onglets (via sidebar)
+// ============================================================================
+
+function activerOnglet(ongletAActiver, btnAActiver) {
+  // Désactiver tous les onglets et boutons
+  [ongletAccueil, ongletNews].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
+  [btnNavAccueil, btnNavNews].forEach(btn => btn && btn.classList.remove("nav-icone--actif"));
+
+  // Activer l'onglet et le bouton demandés
+  ongletAActiver.classList.add("onglet--actif");
+  btnAActiver.classList.add("nav-icone--actif");
+
+  // Charger le contenu de l'onglet si nécessaire
+  if (ongletAActiver === ongletNews && newsCourantes.length > 0) {
+    rendreNewsDansOnglet();
+  }
+}
+
+function renderNewsCard(item) {
+  const card = document.createElement("article");
+  card.className = "news-card";
+
+  card.innerHTML = `
+    <div class="news-card-image">
+      ${item.cover_url ? `<img class="news-card-cover" src="${item.cover_url}" alt="" />` : ''}
+    </div>
+    <div class="news-card-texte">
+      <span class="news-card-date">${formaterDateNews(item.created_at)}</span>
+      <h3 class="news-card-titre">${echapperHtml(item.title)}</h3>
+      <p class="news-card-extrait">${echapperHtml(item.excerpt || '')}</p>
+    </div>
+  `;
+
+  card.addEventListener('click', () => {
+    ouvrirModalNewsAvecDetail(item);
+  });
+
+  return card;
+}
+
+function rendreNewsDansOnglet() {
+  newsListeOngletEl.innerHTML = "";
+
+  if (!newsCourantes.length) {
+    newsListeOngletEl.innerHTML = `<p class="news-vide">Aucune news pour le moment.</p>`;
+    return;
+  }
+
+  for (const item of newsCourantes) {
+    const card = renderNewsCard(item);
+    newsListeOngletEl.appendChild(card);
+  }
+}
+
+function ouvrirModalNewsAvecDetail(item) {
+  newsListeEl.innerHTML = "";
+  
+  const detailEl = document.createElement("article");
+  detailEl.className = "news-item";
+  
+  detailEl.innerHTML = `
+    ${item.cover_url ? `<img class="news-item-cover" src="${item.cover_url}" alt="" style="width: 120px; height: 120px; border-radius: 12px;" />` : ""}
+    <div class="news-item-corps">
+      <p class="news-item-date">${formaterDateNews(item.created_at)}</p>
+      <h3 class="news-item-titre">${echapperHtml(item.title)}</h3>
+      <p class="news-item-extrait">${echapperHtml(item.excerpt)}</p>
+      ${item.content ? `
+        <p class="news-item-contenu">${echapperHtml(item.content)}</p>
+      ` : ""}
+    </div>
+  `;
+  
+  newsListeEl.appendChild(detailEl);
+  modalNews.classList.remove("cache");
+  notifDropdown.classList.add("cache");
+  marquerNewsCommeVues();
+}
+
 // La fenetre demarre au format vertical (ecran de connexion).
 definirTailleFenetre(TAILLE_VERTICALE.largeur, TAILLE_VERTICALE.hauteur);
 
@@ -456,6 +690,39 @@ if (modalSkin) {
   });
 }
 
+// Ecouteurs d'evenements pour les news / notifications
+if (btnNavNews) btnNavNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
+if (btnNavAccueil) btnNavAccueil.addEventListener("click", () => activerOnglet(ongletAccueil, btnNavAccueil));
+if (apercuNews) {
+  apercuNews.addEventListener("click", (e) => {
+    e.preventDefault();
+    activerOnglet(ongletNews, btnNavNews);
+  });
+}
+if (btnCloseNewsModal) btnCloseNewsModal.addEventListener("click", fermerModalNews);
+if (modalNews) {
+  modalNews.addEventListener("click", (e) => {
+    if (e.target === modalNews) {
+      fermerModalNews();
+    }
+  });
+}
+
+if (btnNotifications) {
+  btnNotifications.addEventListener("click", (e) => {
+    e.stopPropagation();
+    notifDropdown.classList.toggle("cache");
+  });
+}
+
+// Ferme le dropdown de notifications si on clique n'importe où ailleurs.
+document.addEventListener("click", (e) => {
+  if (!notifDropdown || notifDropdown.classList.contains("cache")) return;
+  if (notifDropdown.contains(e.target)) return;
+  if (btnNotifications && btnNotifications.contains(e.target)) return;
+  notifDropdown.classList.add("cache");
+});
+
 // Mettre a jour le profil (avatar + tooltip) quand on se connecte.
 // Le nom du joueur n'est plus affiché en texte visible dans la sidebar
 // (la réf n'affiche que l'avatar) : il reste disponible au survol de
@@ -472,4 +739,8 @@ function definirProfil(nom) {
     updateAvatarDisplay();
     loadSkinModel();
   }
+
+  // Charger les news (aperçu accueil + notifications), indépendamment du
+  // profil Discord — c'est juste au moment où on arrive sur l'écran de jeu.
+  chargerNews();
 }

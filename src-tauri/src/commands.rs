@@ -1,5 +1,6 @@
 use crate::database::User;
 use crate::discord_auth::DiscordUser;
+use crate::news::NewsItem;
 use crate::resources::{ResourceManager, SyncResult, FileInfo};
 use crate::AppState;
 use tauri::State;
@@ -271,4 +272,15 @@ pub async fn update_skin_model(
         Some(db) => db.update_skin_model(&discord_id, &model).await.map_err(|e| e.to_string()),
         None => Err("Base de données non connectée".to_string()),
     }
+}
+
+// ============================================================================
+// News
+// ============================================================================
+
+/// Récupère les news publiées depuis le site admin (index.php?api=news).
+/// Renvoie la liste triée la plus récente en premier (voir news.rs).
+#[tauri::command]
+pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
+    crate::news::fetch_news().await
 }
