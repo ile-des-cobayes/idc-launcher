@@ -10,6 +10,8 @@
           rel="stylesheet"
   />
   <link rel="stylesheet" href="styles.css" />
+  <!-- marked.js pour le rendu markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -146,15 +148,6 @@
       </div>
     </div>
 
-    <!-- Modal Liste des News -->
-    <div id="modal-news" class="modal cache">
-      <div class="modal-contenu modal-contenu--news">
-        <h2>News</h2>
-        <div id="news-liste" class="news-liste"></div>
-        <button id="btn-close-news-modal" class="btn-fermer">Fermer</button>
-      </div>
-    </div>
-
     <div class="jeu-principal">
       <span id="texte-connecte" class="sr-only"></span>
       
@@ -196,6 +189,28 @@
           <div class="news-onglet-contenu">
             <h2 class="news-onglet-titre">Dernières News</h2>
             <div id="news-liste-onglet" class="news-grid"></div>
+          </div>
+        </section>
+
+        <!-- Page News Detail (Fullscreen) -->
+        <section id="news-detail" class="onglet cache">
+          <div class="news-detail-contenu">
+            <button id="btn-back-to-news" class="btn-retour-news" title="Retour aux news">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+              Retour aux news
+            </button>
+            <article id="news-detail-article" class="news-detail-article">
+              <div id="news-detail-cover-container" class="news-detail-cover-container cache">
+                <img id="news-detail-cover" class="news-detail-cover" src="" alt="">
+              </div>
+              <div class="news-detail-header">
+                <p id="news-detail-date" class="news-detail-date"></p>
+                <h1 id="news-detail-title" class="news-detail-title"></h1>
+              </div>
+              <div id="news-detail-content" class="news-detail-content"></div>
+            </article>
           </div>
         </section>
 

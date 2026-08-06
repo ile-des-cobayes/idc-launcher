@@ -28,9 +28,7 @@ const modelAlex = document.getElementById("model-alex");
 // Gestion des news / notifications
 const btnNavNews = document.getElementById("btn-nav-news");
 const btnNavAccueil = document.getElementById("btn-nav-accueil");
-const modalNews = document.getElementById("modal-news");
 const newsListeEl = document.getElementById("news-liste");
-const btnCloseNewsModal = document.getElementById("btn-close-news-modal");
 const apercuNews = document.getElementById("apercu-news");
 const apercuNewsCover = document.getElementById("apercu-news-cover");
 const apercuNewsTitre = document.getElementById("apercu-news-titre");
@@ -40,10 +38,19 @@ const apercuNewsExtrait = document.getElementById("apercu-news-extrait");
 const ongletAccueil = document.getElementById("onglet-accueil");
 const ongletNews = document.getElementById("onglet-news");
 const newsListeOngletEl = document.getElementById("news-liste-onglet");
+const newsDetailEl = document.getElementById("news-detail");
 const btnNotifications = document.getElementById("btn-notifications");
 const notifDropdown = document.getElementById("notif-dropdown");
 const notifListeEl = document.getElementById("notif-liste");
 const notifDot = document.getElementById("notif-dot");
+
+// Éléments pour la page detail news
+const newsDetailCoverContainer = document.getElementById("news-detail-cover-container");
+const newsDetailCover = document.getElementById("news-detail-cover");
+const newsDetailDate = document.getElementById("news-detail-date");
+const newsDetailTitle = document.getElementById("news-detail-title");
+const newsDetailContent = document.getElementById("news-detail-content");
+const btnBackToNews = document.getElementById("btn-back-to-news");
 
 let discordUserCourant = null;
 let usernameCourant = null;
@@ -53,7 +60,7 @@ let newsCourantes = [];
 // Ecrans de connexion/pseudo : format vertical.
 // Ecran de jeu : format fenetre classique, comme un launcher normal.
 const TAILLE_VERTICALE = { largeur: 440, hauteur: 680 };
-const TAILLE_JEU = { largeur: 1310, hauteur: 690 };
+const TAILLE_JEU = { largeur: 1440, hauteur: 810 };
 
 // Clé locale (persistée entre lancements) qui retient l'id de la dernière
 // news déjà vue par ce joueur, pour savoir s'il faut afficher le point
@@ -412,14 +419,22 @@ function rendreListeNews(conteneur, items, avecContenu) {
     const el = document.createElement("article");
     el.className = "news-item";
 
+    const excerptHtml = typeof marked !== 'undefined' 
+      ? marked.parse(item.excerpt || '')
+      : echapperHtml(item.excerpt || '');
+    
+    const contentHtml = typeof marked !== 'undefined' && avecContenu && item.content
+      ? marked.parse(item.content)
+      : echapperHtml(item.content || '');
+
     el.innerHTML = `
       ${item.cover_url ? `<img class="news-item-cover" src="${item.cover_url}" alt="" />` : ""}
       <div class="news-item-corps">
         <p class="news-item-date">${formaterDateNews(item.created_at)}</p>
         <h3 class="news-item-titre">${echapperHtml(item.title)}</h3>
-        <p class="news-item-extrait">${echapperHtml(item.excerpt)}</p>
+        <p class="news-item-extrait">${excerptHtml}</p>
         ${avecContenu && item.content ? `
-          <p class="news-item-contenu cache">${echapperHtml(item.content)}</p>
+          <p class="news-item-contenu cache">${contentHtml}</p>
           <button type="button" class="news-item-toggle">Lire la suite</button>
         ` : ""}
       </div>
@@ -460,7 +475,11 @@ function mettreAJourApercuEtNotifs() {
 
   apercuNewsTitre.textContent = derniere.title;
   if (apercuNewsExtrait) {
-    apercuNewsExtrait.textContent = derniere.excerpt || '';
+    if (typeof marked !== 'undefined') {
+      apercuNewsExtrait.innerHTML = marked.parse(derniere.excerpt || '');
+    } else {
+      apercuNewsExtrait.textContent = derniere.excerpt || '';
+    }
   }
   if (derniere.cover_url) {
     apercuNewsCover.src = derniere.cover_url;
@@ -487,21 +506,17 @@ async function chargerNews() {
     const news = await invoke("fetch_news");
     newsCourantes = Array.isArray(news) ? news : [];
     mettreAJourApercuEtNotifs();
+    
+    // Si on est déjà sur l'onglet news, mettre à jour la liste
+    if (ongletNews && ongletNews.classList.contains("onglet--actif")) {
+      rendreNewsDansOnglet();
+    }
   } catch (e) {
     console.warn("Impossible de charger les news :", e);
   }
 }
 
-function fermerModalNews() {
-  modalNews.classList.add("cache");
-}
 
-function ouvrirModalNews() {
-  rendreListeNews(newsListeEl, newsCourantes, true);
-  modalNews.classList.remove("cache");
-  notifDropdown.classList.add("cache");
-  marquerNewsCommeVues();
-}
 
 // ============================================================================
 // Gestion des onglets (via sidebar)
@@ -509,7 +524,7 @@ function ouvrirModalNews() {
 
 function activerOnglet(ongletAActiver, btnAActiver) {
   // Désactiver tous les onglets et boutons
-  [ongletAccueil, ongletNews].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
+  [ongletAccueil, ongletNews, newsDetailEl].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
   [btnNavAccueil, btnNavNews].forEach(btn => btn && btn.classList.remove("nav-icone--actif"));
 
   // Activer l'onglet et le bouton demandés
@@ -526,6 +541,10 @@ function renderNewsCard(item) {
   const card = document.createElement("article");
   card.className = "news-card";
 
+  const excerptHtml = typeof marked !== 'undefined' 
+    ? marked.parse(item.excerpt || '')
+    : echapperHtml(item.excerpt || '');
+
   card.innerHTML = `
     <div class="news-card-image">
       ${item.cover_url ? `<img class="news-card-cover" src="${item.cover_url}" alt="" />` : ''}
@@ -533,15 +552,61 @@ function renderNewsCard(item) {
     <div class="news-card-texte">
       <span class="news-card-date">${formaterDateNews(item.created_at)}</span>
       <h3 class="news-card-titre">${echapperHtml(item.title)}</h3>
-      <p class="news-card-extrait">${echapperHtml(item.excerpt || '')}</p>
+      <p class="news-card-extrait">${excerptHtml}</p>
     </div>
   `;
 
   card.addEventListener('click', () => {
-    ouvrirModalNewsAvecDetail(item);
+    afficherNewsDetail(item);
   });
 
   return card;
+}
+
+// Affiche une news en plein écran (fullscreen)
+function afficherNewsDetail(item) {
+  if (!item || !newsDetailEl) return;
+  
+  // Désactiver tous les onglets
+  [ongletAccueil, ongletNews].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
+  [btnNavAccueil, btnNavNews].forEach(btn => btn && btn.classList.remove("nav-icone--actif"));
+  
+  // Activer l'onglet detail
+  newsDetailEl.classList.remove("cache");
+  newsDetailEl.classList.add("onglet--actif");
+  
+  // Marquer les news comme vues
+  marquerNewsCommeVues();
+  
+  // Remplir les données de la news
+  if (item.cover_url) {
+    newsDetailCover.src = item.cover_url;
+    newsDetailCoverContainer.classList.remove("cache");
+  } else {
+    newsDetailCoverContainer.classList.add("cache");
+  }
+  
+  newsDetailDate.textContent = formaterDateNews(item.created_at);
+  newsDetailTitle.textContent = item.title;
+  
+  // Rendu du markdown avec marked.js
+  if (typeof marked !== 'undefined') {
+    // Configurer marked pour qu'il ne génère pas de balises non sécurisées
+    marked.setOptions({
+      sanitize: true,
+      breaks: true,
+      gfm: true
+    });
+    newsDetailContent.innerHTML = marked.parse(item.content || '');
+  } else {
+    // Fallback en texte brut si marked n'est pas disponible
+    newsDetailContent.innerHTML = `<pre>${echapperHtml(item.content || '')}</pre>`;
+  }
+  
+  // Fermer le dropdown de notifications
+  if (notifDropdown) {
+    notifDropdown.classList.add("cache");
+  }
 }
 
 function rendreNewsDansOnglet() {
@@ -558,28 +623,16 @@ function rendreNewsDansOnglet() {
   }
 }
 
-function ouvrirModalNewsAvecDetail(item) {
-  newsListeEl.innerHTML = "";
+// Fonction pour revenir à la liste des news
+function revenirAListeNews() {
+  if (!newsDetailEl || !ongletNews) return;
   
-  const detailEl = document.createElement("article");
-  detailEl.className = "news-item";
+  // Désactiver l'onglet detail
+  newsDetailEl.classList.remove("onglet--actif");
+  newsDetailEl.classList.add("cache");
   
-  detailEl.innerHTML = `
-    ${item.cover_url ? `<img class="news-item-cover" src="${item.cover_url}" alt="" style="width: 120px; height: 120px; border-radius: 12px;" />` : ""}
-    <div class="news-item-corps">
-      <p class="news-item-date">${formaterDateNews(item.created_at)}</p>
-      <h3 class="news-item-titre">${echapperHtml(item.title)}</h3>
-      <p class="news-item-extrait">${echapperHtml(item.excerpt)}</p>
-      ${item.content ? `
-        <p class="news-item-contenu">${echapperHtml(item.content)}</p>
-      ` : ""}
-    </div>
-  `;
-  
-  newsListeEl.appendChild(detailEl);
-  modalNews.classList.remove("cache");
-  notifDropdown.classList.add("cache");
-  marquerNewsCommeVues();
+  // Activer l'onglet news
+  activerOnglet(ongletNews, btnNavNews);
 }
 
 // La fenetre demarre au format vertical (ecran de connexion).
@@ -696,17 +749,15 @@ if (btnNavAccueil) btnNavAccueil.addEventListener("click", () => activerOnglet(o
 if (apercuNews) {
   apercuNews.addEventListener("click", (e) => {
     e.preventDefault();
-    activerOnglet(ongletNews, btnNavNews);
-  });
-}
-if (btnCloseNewsModal) btnCloseNewsModal.addEventListener("click", fermerModalNews);
-if (modalNews) {
-  modalNews.addEventListener("click", (e) => {
-    if (e.target === modalNews) {
-      fermerModalNews();
+    // Si on a des news chargées, afficher la première (la plus récente) en fullscreen
+    if (newsCourantes && newsCourantes.length > 0) {
+      afficherNewsDetail(newsCourantes[0]);
+    } else {
+      activerOnglet(ongletNews, btnNavNews);
     }
   });
 }
+if (btnBackToNews) btnBackToNews.addEventListener("click", revenirAListeNews);
 
 if (btnNotifications) {
   btnNotifications.addEventListener("click", (e) => {
@@ -743,4 +794,7 @@ function definirProfil(nom) {
   // Charger les news (aperçu accueil + notifications), indépendamment du
   // profil Discord — c'est juste au moment où on arrive sur l'écran de jeu.
   chargerNews();
+  
+  // Mettre à jour les news toutes les 5 minutes
+  setInterval(chargerNews, 5 * 60 * 1000);
 }
