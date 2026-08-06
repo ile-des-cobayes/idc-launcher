@@ -69,7 +69,11 @@
   </section>
 
   <!-- Écran 3 : Connecté / Jeu -->
-  <!-- Disposition sidebar + hub de jeu. -->
+  <!--
+    Disposition sidebar + hero plein écran. L'onglet "News" et les
+    notifications sont maintenant actifs (voir main.js : chargerNews()) ;
+    seule la Boutique reste un emplacement réservé, désactivé.
+  -->
   <section id="ecran-connecte" class="ecran ecran--jeu cache">
     <div class="jeu-fond" aria-hidden="true"></div>
 
@@ -89,10 +93,10 @@
             <path d="M8 9h8M8 13h8M8 17h5" />
           </svg>
         </button>
-        <button type="button" id="btn-nav-capes" class="nav-icone" title="Capes et collection">
+        <button type="button" class="nav-icone" disabled title="Boutique — bientôt disponible">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M7 4h10l-1 16-4-3-4 3L7 4Z" />
-            <path d="m12 7 .7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7L12 7Z" />
+            <path d="M6 8h12l-1 12H7L6 8Z" />
+            <path d="M9 8V6a3 3 0 0 1 6 0v2" />
           </svg>
         </button>
       </nav>
@@ -236,30 +240,6 @@
             <div id="news-featured" class="news-featured"></div>
             <h3 class="news-latest-title">Tous les articles</h3>
             <div id="news-liste-onglet" class="news-grid"></div>
-          </div>
-        </section>
-
-        <!-- Onglet Capes / collection -->
-        <section id="onglet-capes" class="onglet">
-          <div class="cape-shop">
-            <header class="cape-shop-heading">
-              <div>
-                <p class="section-kicker">Collection personnelle</p>
-                <h2>Atelier des capes</h2>
-                <p>Choisis ta signature, débloque de nouvelles pièces et porte-la sur l’île.</p>
-              </div>
-              <div class="cape-wallet" aria-label="Solde du portefeuille">
-                <span class="cape-wallet-label">Portefeuille</span>
-                <strong id="cape-wallet-balance">—</strong>
-                <span class="cape-wallet-currency">éclats</span>
-              </div>
-            </header>
-            <div id="cape-shop-feedback" class="cape-shop-feedback cache" role="status"></div>
-            <div class="cape-shop-toolbar">
-              <p id="cape-shop-summary">Chargement de la collection…</p>
-              <button id="btn-remove-cape" type="button" class="btn-textual cache">Retirer la cape active</button>
-            </div>
-            <div id="cape-shop-grid" class="cape-shop-grid" aria-live="polite"></div>
           </div>
         </section>
 

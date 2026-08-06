@@ -31,6 +31,7 @@ const btnCloseModal = document.getElementById("btn-close-modal");
 const skinStatus = document.getElementById("skin-status");
 const modelSteve = document.getElementById("model-steve");
 const modelAlex = document.getElementById("model-alex");
+const btnGotoCapes = document.getElementById("btn-goto-capes");
 
 // Gestion des news / notifications
 const btnNavNews = document.getElementById("btn-nav-news");
@@ -109,7 +110,7 @@ async function definirTailleFenetre(largeur, hauteur) {
 
   try {
     await fenetre.setMinSize(
-      tailleMinimum
+        tailleMinimum
     );
   } catch (e) {
     // Un minimum de fenêtre non supporté ne doit jamais empêcher le hub
@@ -237,8 +238,8 @@ async function updateAvatarDisplay() {
     // libre dans le launcher. On part exclusivement du skin associé à l'ID
     // Discord par l'API IDC, puis on en extrait la tête localement.
     const skinUrl = hasCustomSkin
-      ? `https://ouepamal.fr/skin-api/textures/${discordUserCourant.id}_skin.png`
-      : "https://ouepamal.fr/skin-api/textures/default_skin.png";
+        ? `https://ouepamal.fr/skin-api/textures/${discordUserCourant.id}_skin.png`
+        : "https://ouepamal.fr/skin-api/textures/default_skin.png";
     const headDataUrl = await extractHeadFromSkin(skinUrl);
 
     avatarSkin.onerror = () => {
@@ -472,6 +473,7 @@ function afficherRetourCape(message, type = "info") {
   if (!capeShopFeedback) return;
   capeShopFeedback.textContent = message;
   capeShopFeedback.className = `cape-shop-feedback cape-shop-feedback--${type}`;
+  capeShopFeedback.classList.remove("cache");
 }
 
 function formatNombreEclats(value) {
@@ -488,8 +490,8 @@ function rendreBoutiqueCapes(profile) {
   if (capeShopSummary) {
     const possedees = capes.filter((cape) => cape.owned).length;
     capeShopSummary.textContent = possedees
-      ? `${possedees} cape${possedees > 1 ? "s" : ""} dans ta collection`
-      : "Ta collection attend sa première cape.";
+        ? `${possedees} cape${possedees > 1 ? "s" : ""} dans ta collection`
+        : "Ta collection attend sa première cape.";
   }
   if (btnRemoveCape) btnRemoveCape.classList.toggle("cache", !selectedCapeId);
 
@@ -504,10 +506,10 @@ function rendreBoutiqueCapes(profile) {
     card.className = `cape-card${cape.selected ? " cape-card--selected" : ""}${cape.owned ? " cape-card--owned" : ""}`;
     const price = formatNombreEclats(cape.price);
     const action = cape.owned
-      ? (cape.selected
-        ? `<span class="cape-card-active">Équipée</span>`
-        : `<button class="cape-card-action cape-card-action--select" type="button" data-cape-action="select" data-cape-id="${echapperHtml(cape.id)}">Équiper</button>`)
-      : `<button class="cape-card-action" type="button" data-cape-action="buy" data-cape-id="${echapperHtml(cape.id)}">Débloquer <span>${price} ✦</span></button>`;
+        ? (cape.selected
+            ? `<span class="cape-card-active">Équipée</span>`
+            : `<button class="cape-card-action cape-card-action--select" type="button" data-cape-action="select" data-cape-id="${echapperHtml(cape.id)}">Équiper</button>`)
+        : `<button class="cape-card-action" type="button" data-cape-action="buy" data-cape-id="${echapperHtml(cape.id)}">Débloquer <span>${price} ✦</span></button>`;
 
     card.innerHTML = `
       <div class="cape-card-art">
@@ -595,11 +597,11 @@ function categorieNews(item) {
 
 function texteApercu(texte) {
   return (texte || "")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[*_`#>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/[*_`#>]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
 }
 
 function resoudreUrlNews(url, item) {
@@ -611,8 +613,8 @@ function resoudreUrlNews(url, item) {
   try {
     const ressource = new URL(url, base);
     return ["https:", "http:", "mailto:", "tel:"].includes(ressource.protocol)
-      ? ressource.href
-      : null;
+        ? ressource.href
+        : null;
   } catch {
     return null;
   }
@@ -763,19 +765,19 @@ function rendreNewsAccueil(articleUne) {
   homeNewsList.innerHTML = "";
 
   newsCourantes
-    .filter((item) => item.id !== articleUne.id)
-    .slice(0, 2)
-    .forEach((item) => {
-      const article = document.createElement("button");
-      article.type = "button";
-      article.className = "home-news-item";
-      article.innerHTML = `
+      .filter((item) => item.id !== articleUne.id)
+      .slice(0, 2)
+      .forEach((item) => {
+        const article = document.createElement("button");
+        article.type = "button";
+        article.className = "home-news-item";
+        article.innerHTML = `
         <span class="home-news-item-title">${echapperHtml(item.title)}</span>
         <span class="home-news-item-date">${formaterDateNews(item.created_at)}</span>
       `;
-      article.addEventListener("click", () => afficherNewsDetail(item));
-      homeNewsList.appendChild(article);
-    });
+        article.addEventListener("click", () => afficherNewsDetail(item));
+        homeNewsList.appendChild(article);
+      });
 }
 
 // Récupère les news depuis le site admin via la commande Tauri fetch_news
@@ -785,7 +787,7 @@ async function chargerNews() {
     const news = await invoke("fetch_news");
     newsCourantes = Array.isArray(news) ? news : [];
     mettreAJourApercuEtNotifs();
-    
+
     // Si on est déjà sur l'onglet news, mettre à jour la liste
     if (ongletNews && ongletNews.classList.contains("onglet--actif")) {
       rendreNewsDansOnglet();
@@ -803,8 +805,8 @@ async function chargerNews() {
 
 function activerOnglet(ongletAActiver, btnAActiver) {
   // Désactiver tous les onglets et boutons
-  [ongletAccueil, ongletNews, newsDetailEl].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
-  [btnNavAccueil, btnNavNews].forEach(btn => btn && btn.classList.remove("nav-icone--actif"));
+  [ongletAccueil, ongletNews, ongletCapes, newsDetailEl].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
+  [btnNavAccueil, btnNavNews, btnNavCapes].forEach(btn => btn && btn.classList.remove("nav-icone--actif"));
 
   // Activer l'onglet et le bouton demandés
   ongletAActiver.classList.add("onglet--actif");
@@ -813,6 +815,9 @@ function activerOnglet(ongletAActiver, btnAActiver) {
   // Charger le contenu de l'onglet si nécessaire
   if (ongletAActiver === ongletNews && newsCourantes.length > 0) {
     rendreNewsDansOnglet();
+  }
+  if (ongletAActiver === ongletCapes) {
+    chargerBoutiqueCapes();
   }
 }
 
@@ -860,18 +865,18 @@ function renderNewsFeatured(item) {
 // Affiche une news en plein écran (fullscreen)
 function afficherNewsDetail(item) {
   if (!item || !newsDetailEl) return;
-  
+
   // Désactiver tous les onglets
   [ongletAccueil, ongletNews].forEach(onglet => onglet && onglet.classList.remove("onglet--actif"));
   [btnNavAccueil, btnNavNews].forEach(btn => btn && btn.classList.remove("nav-icone--actif"));
-  
+
   // Activer l'onglet detail
   newsDetailEl.classList.remove("cache");
   newsDetailEl.classList.add("onglet--actif");
-  
+
   // Marquer les news comme vues
   marquerNewsCommeVues();
-  
+
   // Remplir les données de la news
   if (item.cover_url) {
     newsDetailCover.src = item.cover_url;
@@ -879,15 +884,15 @@ function afficherNewsDetail(item) {
   } else {
     newsDetailCoverContainer.classList.add("cache");
   }
-  
+
   newsDetailDate.textContent = formaterDateNews(item.created_at);
   newsDetailTitle.textContent = item.title;
-  
+
   newsDetailContent.innerHTML = rendreMarkdown(item.content);
   preparerRessourcesMarkdown(newsDetailContent, item);
   const viewport = newsDetailEl.querySelector(".news-detail-contenu");
   if (viewport) viewport.scrollTop = 0;
-  
+
   // Fermer le dropdown de notifications
   if (notifDropdown) {
     notifDropdown.classList.add("cache");
@@ -920,11 +925,11 @@ function rendreNewsDansOnglet() {
 // Fonction pour revenir à la liste des news
 function revenirAListeNews() {
   if (!newsDetailEl || !ongletNews) return;
-  
+
   // Désactiver l'onglet detail
   newsDetailEl.classList.remove("onglet--actif");
   newsDetailEl.classList.add("cache");
-  
+
   // Activer l'onglet news
   activerOnglet(ongletNews, btnNavNews);
 }
@@ -1034,6 +1039,12 @@ btnJouer.addEventListener("click", async () => {
 if (btnProfil) btnProfil.addEventListener("click", openSkinModal);
 if (btnCloseModal) btnCloseModal.addEventListener("click", closeSkinModal);
 if (btnDeleteSkin) btnDeleteSkin.addEventListener("click", deleteCustomSkin);
+if (btnGotoCapes) {
+  btnGotoCapes.addEventListener("click", () => {
+    closeSkinModal();
+    activerOnglet(ongletCapes, btnNavCapes);
+  });
+}
 
 // Gestion du changement de modèle
 if (modelSteve && modelAlex) {
@@ -1072,6 +1083,7 @@ if (modalSkin) {
 // Ecouteurs d'evenements pour les news / notifications
 if (btnNavNews) btnNavNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
 if (btnNavAccueil) btnNavAccueil.addEventListener("click", () => activerOnglet(ongletAccueil, btnNavAccueil));
+if (btnNavCapes) btnNavCapes.addEventListener("click", () => activerOnglet(ongletCapes, btnNavCapes));
 if (btnVoirNews) btnVoirNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
 if (apercuNews) {
   apercuNews.addEventListener("click", (e) => {
@@ -1085,6 +1097,22 @@ if (apercuNews) {
   });
 }
 if (btnBackToNews) btnBackToNews.addEventListener("click", revenirAListeNews);
+
+// Ecouteurs d'evenements pour la boutique de capes
+if (capeShopGrid) {
+  capeShopGrid.addEventListener("click", (e) => {
+    const bouton = e.target.closest("[data-cape-action]");
+    if (!bouton) return;
+    const capeId = bouton.dataset.capeId;
+    const action = bouton.dataset.capeAction;
+    if (!capeId) return;
+    if (action === "buy") acheterCape(capeId);
+    if (action === "select") selectionnerCape(capeId);
+  });
+}
+if (btnRemoveCape) {
+  btnRemoveCape.addEventListener("click", () => selectionnerCape(null));
+}
 
 // Les WebViews Tauri ne doivent jamais naviguer à l'intérieur du launcher :
 // les liens écrits dans une news s'ouvrent dans le navigateur de l'utilisateur.
@@ -1137,6 +1165,9 @@ function definirProfil(nom) {
   // Charger les news (aperçu accueil + notifications), indépendamment du
   // profil Discord — c'est juste au moment où on arrive sur l'écran de jeu.
   chargerNews();
+
+  // Charge le portefeuille et la boutique de capes.
+  chargerBoutiqueCapes();
 
   // Mettre à jour les news toutes les 5 minutes
   setInterval(chargerNews, 5 * 60 * 1000);
