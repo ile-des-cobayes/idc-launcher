@@ -64,6 +64,16 @@ pub fn run() {
             resource_manager,
         })
         .setup(|app| {
+            // Le launcher commence sur l'écran de connexion, volontairement
+            // portrait. Le frontend agrandit ensuite la même fenêtre pour le
+            // hub de jeu, sans jamais la mettre en plein écran.
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_title("L'île des Cobayes")?;
+                window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(
+                    480.0, 720.0,
+                ))))?;
+            }
+
             let handle = app.handle().clone();
 
             // La connexion à MySQL est async : on la lance en tâche de fond
@@ -88,6 +98,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::set_launcher_window_mode,
             commands::start_discord_auth,
             commands::complete_discord_auth,
             commands::get_user_by_discord_id,
@@ -102,6 +113,9 @@ pub fn run() {
             commands::has_custom_skin,
             commands::get_skin_model,
             commands::update_skin_model,
+            commands::get_cape_shop,
+            commands::purchase_cape,
+            commands::select_cape,
             commands::fetch_news,
         ])
         .run(tauri::generate_context!())

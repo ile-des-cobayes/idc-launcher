@@ -1,6 +1,7 @@
 const { invoke } = window.__TAURI__.core;
 const { openUrl } = window.__TAURI__.opener;
 const tauriWindow = window.__TAURI__.window;
+const tauriEvent = window.__TAURI__.event;
 
 const ecranConnexion = document.getElementById("ecran-connexion");
 const ecranPseudo = document.getElementById("ecran-pseudo");
@@ -12,6 +13,12 @@ const avatarInitiale = document.getElementById("avatar-initiale");
 const btnDiscord = document.getElementById("btn-discord");
 const btnValiderPseudo = document.getElementById("btn-valider-pseudo");
 const btnJouer = document.getElementById("btn-jouer");
+const launchProgress = document.getElementById("launch-progress");
+const launchProgressLabel = document.getElementById("launch-progress-label");
+const launchProgressPercent = document.getElementById("launch-progress-percent");
+const launchProgressTrack = document.getElementById("launch-progress-track");
+const launchProgressFill = document.getElementById("launch-progress-fill");
+const launchProgressDetail = document.getElementById("launch-progress-detail");
 
 // Gestion du skin
 const btnProfil = document.getElementById("btn-profil");
@@ -28,21 +35,34 @@ const modelAlex = document.getElementById("model-alex");
 // Gestion des news / notifications
 const btnNavNews = document.getElementById("btn-nav-news");
 const btnNavAccueil = document.getElementById("btn-nav-accueil");
+const btnNavCapes = document.getElementById("btn-nav-capes");
 const newsListeEl = document.getElementById("news-liste");
 const apercuNews = document.getElementById("apercu-news");
 const apercuNewsCover = document.getElementById("apercu-news-cover");
 const apercuNewsTitre = document.getElementById("apercu-news-titre");
 const apercuNewsExtrait = document.getElementById("apercu-news-extrait");
+const apercuNewsCategory = document.getElementById("apercu-news-category");
+const homeNewsList = document.getElementById("home-news-list");
+const btnVoirNews = document.getElementById("btn-voir-news");
 
 // Éléments pour les onglets
 const ongletAccueil = document.getElementById("onglet-accueil");
 const ongletNews = document.getElementById("onglet-news");
+const ongletCapes = document.getElementById("onglet-capes");
 const newsListeOngletEl = document.getElementById("news-liste-onglet");
+const newsFeaturedEl = document.getElementById("news-featured");
 const newsDetailEl = document.getElementById("news-detail");
 const btnNotifications = document.getElementById("btn-notifications");
 const notifDropdown = document.getElementById("notif-dropdown");
 const notifListeEl = document.getElementById("notif-liste");
 const notifDot = document.getElementById("notif-dot");
+
+// Boutique et collection de capes
+const capeWalletBalance = document.getElementById("cape-wallet-balance");
+const capeShopFeedback = document.getElementById("cape-shop-feedback");
+const capeShopSummary = document.getElementById("cape-shop-summary");
+const capeShopGrid = document.getElementById("cape-shop-grid");
+const btnRemoveCape = document.getElementById("btn-remove-cape");
 
 // Éléments pour la page detail news
 const newsDetailCoverContainer = document.getElementById("news-detail-cover-container");
@@ -56,11 +76,14 @@ let discordUserCourant = null;
 let usernameCourant = null;
 let skinModel = "default";
 let newsCourantes = [];
+let lancementEnCours = false;
+let jeuLance = false;
+let cosmeticsProfile = null;
 
 // Ecrans de connexion/pseudo : format vertical.
 // Ecran de jeu : format fenetre classique, comme un launcher normal.
-const TAILLE_VERTICALE = { largeur: 440, hauteur: 680 };
-const TAILLE_JEU = { largeur: 1440, hauteur: 810 };
+const TAILLE_VERTICALE = { largeur: 480, hauteur: 760 };
+const TAILLE_JEU = { largeur: 1280, hauteur: 760 };
 
 // Clé locale (persistée entre lancements) qui retient l'id de la dernière
 // news déjà vue par ce joueur, pour savoir s'il faut afficher le point
@@ -68,25 +91,49 @@ const TAILLE_JEU = { largeur: 1440, hauteur: 810 };
 const CLE_DERNIERE_NEWS_VUE = "idc_derniere_news_vue";
 
 async function definirTailleFenetre(largeur, hauteur) {
+  const estHub = largeur === TAILLE_JEU.largeur;
+
+  // La commande native est la source de vérité : macOS/WebKit peut ignorer
+  // des appels `setSize` envoyés depuis le WebView après une navigation.
   try {
-    if (!tauriWindow) return;
-    const fenetre = tauriWindow.getCurrentWindow();
-    await fenetre.setSize(new tauriWindow.LogicalSize(largeur, hauteur));
+    await invoke("set_launcher_window_mode", { mode: estHub ? "hub" : "login" });
+    return;
+  } catch (e) {
+    console.warn("Redimensionnement natif indisponible, fallback WebView :", e);
+  }
+
+  if (!tauriWindow) return;
+  const fenetre = tauriWindow.getCurrentWindow();
+  const taille = new tauriWindow.LogicalSize(largeur, hauteur);
+  const tailleMinimum = new tauriWindow.LogicalSize(estHub ? 1120 : 480, estHub ? 680 : 720);
+
+  try {
+    await fenetre.setMinSize(
+      tailleMinimum
+    );
+  } catch (e) {
+    // Un minimum de fenêtre non supporté ne doit jamais empêcher le hub
+    // de reprendre sa largeur normale.
+    console.warn("Impossible de définir la taille minimale :", e);
+  }
+
+  try {
+    await fenetre.setSize(taille);
     await fenetre.center();
   } catch (e) {
-    console.warn("Impossible de redimensionner la fenetre :", e);
+    console.warn("Impossible de redimensionner la fenêtre :", e);
   }
 }
 
-function afficherEcran(ecran) {
+async function afficherEcran(ecran) {
+  if (ecran === ecranConnecte) {
+    await definirTailleFenetre(TAILLE_JEU.largeur, TAILLE_JEU.hauteur);
+  } else {
+    await definirTailleFenetre(TAILLE_VERTICALE.largeur, TAILLE_VERTICALE.hauteur);
+  }
+
   [ecranConnexion, ecranPseudo, ecranConnecte].forEach((e) => e.classList.add("cache"));
   ecran.classList.remove("cache");
-
-  if (ecran === ecranConnecte) {
-    definirTailleFenetre(TAILLE_JEU.largeur, TAILLE_JEU.hauteur);
-  } else {
-    definirTailleFenetre(TAILLE_VERTICALE.largeur, TAILLE_VERTICALE.hauteur);
-  }
 }
 
 function afficherErreur(message) {
@@ -94,11 +141,43 @@ function afficherErreur(message) {
   erreur.classList.remove("cache");
 }
 
+function mettreAJourProgressionLancement(update) {
+  if (!launchProgress) return;
+
+  const progress = Math.max(0, Math.min(100, Number(update?.progress) || 0));
+  const phase = update?.phase || "preparing";
+  launchProgress.classList.remove("cache");
+  launchProgress.dataset.phase = phase;
+  launchProgress.classList.toggle("launch-progress--termine", phase === "started");
+  launchProgress.classList.toggle("launch-progress--erreur", phase === "error");
+
+  if (launchProgressLabel) {
+    launchProgressLabel.textContent = update?.label || "Préparation du launcher";
+  }
+  if (launchProgressPercent) launchProgressPercent.textContent = `${progress}%`;
+  if (launchProgressDetail) {
+    launchProgressDetail.textContent = update?.detail || "Cette étape peut prendre quelques instants.";
+  }
+  if (launchProgressFill) launchProgressFill.style.width = `${progress}%`;
+  if (launchProgressTrack) launchProgressTrack.setAttribute("aria-valuenow", String(progress));
+}
+
+// Le backend envoie uniquement de vraies étapes du lancement : la barre ne
+// prétend donc jamais connaître un nombre d'octets qu'il ne peut pas mesurer.
+if (tauriEvent?.listen) {
+  tauriEvent.listen("launcher-progress", ({ payload }) => {
+    mettreAJourProgressionLancement(payload);
+  }).catch((error) => {
+    console.warn("Écoute de la progression indisponible :", error);
+  });
+}
+
 // ============================================================================
 // Gestion du Skin
 // ============================================================================
 
-// Extrait la tête d'un skin Minecraft (8x8 pixels -> 40x40)
+// Extrait la tête et sa seconde couche (casque/chapeau) d'un skin Minecraft.
+// Le rendu garde le pixel-art net tout en affichant la tête complète.
 async function extractHeadFromSkin(skinUrl) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -123,6 +202,11 @@ async function extractHeadFromSkin(skinUrl) {
         // Le visage (face avant de la tête) est à (8,8)-(16,16) dans un
         // skin 64x64. (8,0)-(16,8) est le DESSUS du crâne, pas le visage.
         ctx.drawImage(img, 8, 8, 8, 8, 0, 0, 40, 40);
+        // La surcouche de tête (chapeau, casque, cheveux...) est à (40,8).
+        // Elle donne le relief caractéristique des avatars de launcher.
+        if (img.width >= 48 && img.height >= 16) {
+          ctx.drawImage(img, 40, 8, 8, 8, 0, 0, 40, 40);
+        }
 
         resolve(canvas.toDataURL("image/png"));
       } catch (e) {
@@ -149,32 +233,31 @@ async function updateAvatarDisplay() {
       discordId: discordUserCourant.id,
     });
 
-    if (hasCustomSkin) {
-      // Extraire la tête du skin
-      const skinUrl = `https://ouepamal.fr/skin-api/textures/${discordUserCourant.id}_skin.png`;
-      const headDataUrl = await extractHeadFromSkin(skinUrl);
+    // L'identité visuelle ne dépend jamais du pseudo Minecraft : celui-ci est
+    // libre dans le launcher. On part exclusivement du skin associé à l'ID
+    // Discord par l'API IDC, puis on en extrait la tête localement.
+    const skinUrl = hasCustomSkin
+      ? `https://ouepamal.fr/skin-api/textures/${discordUserCourant.id}_skin.png`
+      : "https://ouepamal.fr/skin-api/textures/default_skin.png";
+    const headDataUrl = await extractHeadFromSkin(skinUrl);
 
-      // On ne bascule l'affichage vers l'image qu'une fois qu'on sait
-      // qu'on a quelque chose a montrer, pour ne jamais laisser l'<img>
-      // visible avec un src vide (icone cassee) pendant l'extraction.
-      avatarSkin.onerror = () => {
-        // Meme le skin complet ne charge pas : on retombe sur les initiales.
-        avatarInitiale.classList.remove("cache");
-        avatarSkin.classList.add("cache");
-      };
+    avatarSkin.onerror = () => {
+      avatarInitiale.textContent = "?";
+      avatarInitiale.classList.remove("cache");
+      avatarSkin.classList.add("cache");
+    };
 
-      if (headDataUrl) {
-        avatarSkin.src = headDataUrl;
-      } else {
-        avatarSkin.src = skinUrl; // Fallback au skin complet
-      }
-
+    if (headDataUrl) {
+      avatarSkin.src = headDataUrl;
       avatarInitiale.classList.add("cache");
       avatarSkin.classList.remove("cache");
     } else {
+      // L'API doit renvoyer des PNG avec CORS pour l'extraction canvas. En
+      // cas d'indisponibilité, on préfère une initiale neutre à un pseudo
+      // pouvant représenter un autre joueur ou un mauvais skin.
+      avatarInitiale.textContent = "?";
       avatarInitiale.classList.remove("cache");
       avatarSkin.classList.add("cache");
-      avatarInitiale.textContent = (usernameCourant || discordUserCourant.username || "?")[0].toUpperCase();
     }
   } catch (e) {
     console.error("Erreur mise a jour avatar:", e);
@@ -382,6 +465,108 @@ async function deleteCustomSkin() {
 }
 
 // ============================================================================
+// Capes / portefeuille
+// ============================================================================
+
+function afficherRetourCape(message, type = "info") {
+  if (!capeShopFeedback) return;
+  capeShopFeedback.textContent = message;
+  capeShopFeedback.className = `cape-shop-feedback cape-shop-feedback--${type}`;
+}
+
+function formatNombreEclats(value) {
+  return new Intl.NumberFormat("fr-FR").format(Number(value) || 0);
+}
+
+function rendreBoutiqueCapes(profile) {
+  if (!profile || !capeShopGrid) return;
+  cosmeticsProfile = profile;
+  const capes = Array.isArray(profile.capes) ? profile.capes : [];
+  const selectedCapeId = profile.selectedCapeId || null;
+
+  if (capeWalletBalance) capeWalletBalance.textContent = formatNombreEclats(profile.balance);
+  if (capeShopSummary) {
+    const possedees = capes.filter((cape) => cape.owned).length;
+    capeShopSummary.textContent = possedees
+      ? `${possedees} cape${possedees > 1 ? "s" : ""} dans ta collection`
+      : "Ta collection attend sa première cape.";
+  }
+  if (btnRemoveCape) btnRemoveCape.classList.toggle("cache", !selectedCapeId);
+
+  capeShopGrid.innerHTML = "";
+  if (!capes.length) {
+    capeShopGrid.innerHTML = `<p class="cape-shop-empty">Aucune cape n'est disponible pour le moment.</p>`;
+    return;
+  }
+
+  for (const cape of capes) {
+    const card = document.createElement("article");
+    card.className = `cape-card${cape.selected ? " cape-card--selected" : ""}${cape.owned ? " cape-card--owned" : ""}`;
+    const price = formatNombreEclats(cape.price);
+    const action = cape.owned
+      ? (cape.selected
+        ? `<span class="cape-card-active">Équipée</span>`
+        : `<button class="cape-card-action cape-card-action--select" type="button" data-cape-action="select" data-cape-id="${echapperHtml(cape.id)}">Équiper</button>`)
+      : `<button class="cape-card-action" type="button" data-cape-action="buy" data-cape-id="${echapperHtml(cape.id)}">Débloquer <span>${price} ✦</span></button>`;
+
+    card.innerHTML = `
+      <div class="cape-card-art">
+        <span class="cape-card-glow" aria-hidden="true"></span>
+        <img src="${echapperHtml(cape.textureUrl)}" alt="Aperçu de la cape ${echapperHtml(cape.name)}" />
+        ${cape.selected ? '<span class="cape-card-badge">Active</span>' : ""}
+        ${cape.owned && !cape.selected ? '<span class="cape-card-badge cape-card-badge--owned">Possédée</span>' : ""}
+      </div>
+      <div class="cape-card-copy">
+        <h3>${echapperHtml(cape.name)}</h3>
+        <p>${echapperHtml(cape.description || "Une pièce rare de la collection de l'île.")}</p>
+        <div class="cape-card-footer">
+          ${cape.owned ? '<span class="cape-card-price">Dans ta collection</span>' : `<span class="cape-card-price">${price} éclats</span>`}
+          ${action}
+        </div>
+      </div>
+    `;
+    capeShopGrid.appendChild(card);
+  }
+}
+
+async function chargerBoutiqueCapes() {
+  if (!discordUserCourant?.id) return;
+  if (capeShopSummary) capeShopSummary.textContent = "Synchronisation du portefeuille…";
+  try {
+    const profile = await invoke("get_cape_shop", { discordId: discordUserCourant.id });
+    rendreBoutiqueCapes(profile);
+    if (capeShopFeedback) capeShopFeedback.classList.add("cache");
+  } catch (error) {
+    afficherRetourCape(`Impossible de charger les capes : ${error}`, "error");
+    if (capeShopSummary) capeShopSummary.textContent = "Collection indisponible pour le moment.";
+  }
+}
+
+async function acheterCape(capeId) {
+  if (!discordUserCourant?.id) return;
+  afficherRetourCape("Achat en cours…");
+  try {
+    const profile = await invoke("purchase_cape", { discordId: discordUserCourant.id, capeId });
+    rendreBoutiqueCapes(profile);
+    afficherRetourCape("Cape débloquée et ajoutée à ta collection !", "success");
+  } catch (error) {
+    afficherRetourCape(String(error), "error");
+  }
+}
+
+async function selectionnerCape(capeId) {
+  if (!discordUserCourant?.id) return;
+  afficherRetourCape(capeId ? "Équipement de la cape…" : "Retrait de la cape…");
+  try {
+    const profile = await invoke("select_cape", { discordId: discordUserCourant.id, capeId: capeId || null });
+    rendreBoutiqueCapes(profile);
+    afficherRetourCape(capeId ? "Cape équipée. Elle sera visible en jeu après la mise à jour du mod." : "Aucune cape n'est maintenant équipée.", "success");
+  } catch (error) {
+    afficherRetourCape(String(error), "error");
+  }
+}
+
+// ============================================================================
 // Gestion des News / Notifications
 // ============================================================================
 
@@ -404,6 +589,87 @@ function formaterDateNews(iso) {
   }
 }
 
+function categorieNews(item) {
+  return item.category || "Actualité";
+}
+
+function texteApercu(texte) {
+  return (texte || "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`#>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resoudreUrlNews(url, item) {
+  if (!url || url.startsWith("#")) return null;
+
+  const base = item?.content_base_url || item?.cover_url || null;
+  if (!base) return null;
+
+  try {
+    const ressource = new URL(url, base);
+    return ["https:", "http:", "mailto:", "tel:"].includes(ressource.protocol)
+      ? ressource.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function preparerRessourcesMarkdown(conteneur, item) {
+  conteneur.querySelectorAll("img[src]").forEach((image) => {
+    const src = resoudreUrlNews(image.getAttribute("src"), item);
+    if (!src) {
+      image.remove();
+      return;
+    }
+
+    image.src = src;
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.addEventListener("error", () => image.classList.add("markdown-image--erreur"), { once: true });
+  });
+
+  conteneur.querySelectorAll("a[href]").forEach((lien) => {
+    const href = resoudreUrlNews(lien.getAttribute("href"), item);
+    if (!href) {
+      lien.removeAttribute("href");
+      return;
+    }
+
+    lien.href = href;
+    lien.target = "_blank";
+    lien.rel = "noopener noreferrer";
+  });
+}
+
+function rendreMarkdown(texte) {
+  const source = String(texte || "");
+  if (typeof marked === "undefined") {
+    return `<p>${echapperHtml(source)}</p>`;
+  }
+
+  const html = marked.parse(source, { breaks: true, gfm: true });
+  if (typeof DOMPurify !== "undefined") {
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+      ADD_TAGS: ["img"],
+      ADD_ATTR: ["src", "alt", "title", "width", "height"],
+      FORBID_TAGS: ["style", "script", "iframe", "object", "embed", "form", "input", "button"],
+    });
+  }
+
+  // Le contenu est administré, mais on ne rend jamais du HTML brut lorsqu'un
+  // CDN est temporairement indisponible.
+  return `<p>${echapperHtml(source)}</p>`;
+}
+
+function newsALaUne() {
+  return newsCourantes.find((item) => item.featured) || newsCourantes[0];
+}
+
 // Affiche une liste de news dans un conteneur donné.
 // `avecContenu` : true pour la modal complète (bouton "Lire la suite"),
 // false pour le mini-dropdown de notifications (juste titre + date).
@@ -419,22 +685,17 @@ function rendreListeNews(conteneur, items, avecContenu) {
     const el = document.createElement("article");
     el.className = "news-item";
 
-    const excerptHtml = typeof marked !== 'undefined' 
-      ? marked.parse(item.excerpt || '')
-      : echapperHtml(item.excerpt || '');
-    
-    const contentHtml = typeof marked !== 'undefined' && avecContenu && item.content
-      ? marked.parse(item.content)
-      : echapperHtml(item.content || '');
+    const excerpt = echapperHtml(texteApercu(item.excerpt));
+    const contentHtml = avecContenu && item.content ? rendreMarkdown(item.content) : "";
 
     el.innerHTML = `
       ${item.cover_url ? `<img class="news-item-cover" src="${item.cover_url}" alt="" />` : ""}
       <div class="news-item-corps">
         <p class="news-item-date">${formaterDateNews(item.created_at)}</p>
         <h3 class="news-item-titre">${echapperHtml(item.title)}</h3>
-        <p class="news-item-extrait">${excerptHtml}</p>
+        <p class="news-item-extrait">${excerpt}</p>
         ${avecContenu && item.content ? `
-          <p class="news-item-contenu cache">${contentHtml}</p>
+          <div class="news-item-contenu cache">${contentHtml}</div>
           <button type="button" class="news-item-toggle">Lire la suite</button>
         ` : ""}
       </div>
@@ -468,21 +729,18 @@ function mettreAJourApercuEtNotifs() {
     apercuNews.classList.add("cache");
     notifDot.classList.add("cache");
     rendreListeNews(notifListeEl, [], false);
+    if (homeNewsList) homeNewsList.innerHTML = "";
     return;
   }
 
   const derniere = newsCourantes[0];
+  const une = newsALaUne();
 
-  apercuNewsTitre.textContent = derniere.title;
-  if (apercuNewsExtrait) {
-    if (typeof marked !== 'undefined') {
-      apercuNewsExtrait.innerHTML = marked.parse(derniere.excerpt || '');
-    } else {
-      apercuNewsExtrait.textContent = derniere.excerpt || '';
-    }
-  }
-  if (derniere.cover_url) {
-    apercuNewsCover.src = derniere.cover_url;
+  apercuNewsTitre.textContent = une.title;
+  apercuNewsExtrait.textContent = texteApercu(une.excerpt);
+  if (apercuNewsCategory) apercuNewsCategory.textContent = categorieNews(une);
+  if (une.cover_url) {
+    apercuNewsCover.src = une.cover_url;
     apercuNewsCover.classList.remove("cache");
   } else {
     apercuNewsCover.classList.add("cache");
@@ -497,6 +755,27 @@ function mettreAJourApercuEtNotifs() {
   }
 
   rendreListeNews(notifListeEl, newsCourantes.slice(0, 5), false);
+  rendreNewsAccueil(une);
+}
+
+function rendreNewsAccueil(articleUne) {
+  if (!homeNewsList) return;
+  homeNewsList.innerHTML = "";
+
+  newsCourantes
+    .filter((item) => item.id !== articleUne.id)
+    .slice(0, 2)
+    .forEach((item) => {
+      const article = document.createElement("button");
+      article.type = "button";
+      article.className = "home-news-item";
+      article.innerHTML = `
+        <span class="home-news-item-title">${echapperHtml(item.title)}</span>
+        <span class="home-news-item-date">${formaterDateNews(item.created_at)}</span>
+      `;
+      article.addEventListener("click", () => afficherNewsDetail(item));
+      homeNewsList.appendChild(article);
+    });
 }
 
 // Récupère les news depuis le site admin via la commande Tauri fetch_news
@@ -541,18 +820,14 @@ function renderNewsCard(item) {
   const card = document.createElement("article");
   card.className = "news-card";
 
-  const excerptHtml = typeof marked !== 'undefined' 
-    ? marked.parse(item.excerpt || '')
-    : echapperHtml(item.excerpt || '');
-
   card.innerHTML = `
     <div class="news-card-image">
       ${item.cover_url ? `<img class="news-card-cover" src="${item.cover_url}" alt="" />` : ''}
     </div>
     <div class="news-card-texte">
-      <span class="news-card-date">${formaterDateNews(item.created_at)}</span>
+      <span class="news-card-date">${categorieNews(item)} · ${formaterDateNews(item.created_at)}</span>
       <h3 class="news-card-titre">${echapperHtml(item.title)}</h3>
-      <p class="news-card-extrait">${excerptHtml}</p>
+      <p class="news-card-extrait">${echapperHtml(texteApercu(item.excerpt))}</p>
     </div>
   `;
 
@@ -561,6 +836,25 @@ function renderNewsCard(item) {
   });
 
   return card;
+}
+
+function renderNewsFeatured(item) {
+  const article = document.createElement("article");
+  article.className = "news-featured-card";
+  article.innerHTML = `
+    <div class="news-featured-image">
+      ${item.cover_url ? `<img src="${item.cover_url}" alt="" />` : ""}
+    </div>
+    <div class="news-featured-copy">
+      <span class="news-card-date">${categorieNews(item)}</span>
+      <span class="news-featured-date">${formaterDateNews(item.created_at)}</span>
+      <h3 class="news-featured-title">${echapperHtml(item.title)}</h3>
+      <p class="news-featured-excerpt">${echapperHtml(texteApercu(item.excerpt))}</p>
+      <span class="news-featured-action">Lire l'article <span aria-hidden="true">→</span></span>
+    </div>
+  `;
+  article.addEventListener("click", () => afficherNewsDetail(item));
+  return article;
 }
 
 // Affiche une news en plein écran (fullscreen)
@@ -589,19 +883,10 @@ function afficherNewsDetail(item) {
   newsDetailDate.textContent = formaterDateNews(item.created_at);
   newsDetailTitle.textContent = item.title;
   
-  // Rendu du markdown avec marked.js
-  if (typeof marked !== 'undefined') {
-    // Configurer marked pour qu'il ne génère pas de balises non sécurisées
-    marked.setOptions({
-      sanitize: true,
-      breaks: true,
-      gfm: true
-    });
-    newsDetailContent.innerHTML = marked.parse(item.content || '');
-  } else {
-    // Fallback en texte brut si marked n'est pas disponible
-    newsDetailContent.innerHTML = `<pre>${echapperHtml(item.content || '')}</pre>`;
-  }
+  newsDetailContent.innerHTML = rendreMarkdown(item.content);
+  preparerRessourcesMarkdown(newsDetailContent, item);
+  const viewport = newsDetailEl.querySelector(".news-detail-contenu");
+  if (viewport) viewport.scrollTop = 0;
   
   // Fermer le dropdown de notifications
   if (notifDropdown) {
@@ -611,15 +896,24 @@ function afficherNewsDetail(item) {
 
 function rendreNewsDansOnglet() {
   newsListeOngletEl.innerHTML = "";
+  if (newsFeaturedEl) newsFeaturedEl.innerHTML = "";
 
   if (!newsCourantes.length) {
     newsListeOngletEl.innerHTML = `<p class="news-vide">Aucune news pour le moment.</p>`;
     return;
   }
 
-  for (const item of newsCourantes) {
+  const une = newsALaUne();
+  if (newsFeaturedEl) newsFeaturedEl.appendChild(renderNewsFeatured(une));
+
+  const articles = newsCourantes.filter((item) => item.id !== une.id);
+  for (const item of articles) {
     const card = renderNewsCard(item);
     newsListeOngletEl.appendChild(card);
+  }
+
+  if (!articles.length) {
+    newsListeOngletEl.innerHTML = `<p class="news-vide">D'autres chroniques arriveront bientôt.</p>`;
   }
 }
 
@@ -657,11 +951,11 @@ btnDiscord.addEventListener("click", async () => {
     if (existingUser) {
       usernameCourant = existingUser.username;
       await definirProfil(existingUser.username);
-      afficherEcran(ecranConnecte);
+      await afficherEcran(ecranConnecte);
     } else {
       document.getElementById("bienvenue-discord").textContent =
           `Bienvenue, ${discordUser.username} ! Choisis ton pseudo Minecraft :`;
-      afficherEcran(ecranPseudo);
+      await afficherEcran(ecranPseudo);
     }
   } catch (e) {
     afficherErreur(`Erreur : ${e}`);
@@ -680,27 +974,59 @@ btnValiderPseudo.addEventListener("click", async () => {
     });
     usernameCourant = user.username;
     await definirProfil(user.username);
-    afficherEcran(ecranConnecte);
+    await afficherEcran(ecranConnecte);
   } catch (e) {
     afficherErreur(`Erreur : ${e}`);
   }
 });
 
 btnJouer.addEventListener("click", async () => {
-  if (!usernameCourant) return;
+  if (!usernameCourant || lancementEnCours || jeuLance) return;
 
   erreur.classList.add("cache");
+  lancementEnCours = true;
   btnJouer.disabled = true;
   const contenuOriginal = btnJouer.innerHTML;
-  btnJouer.textContent = "Installation / Lancement...";
+  btnJouer.textContent = "Préparation...";
+  mettreAJourProgressionLancement({
+    phase: "preparing",
+    progress: 4,
+    label: "Préparation du launcher",
+    detail: "Vérification de ton installation",
+  });
 
   try {
     await invoke("launch_game", { username: usernameCourant });
+    mettreAJourProgressionLancement({
+      phase: "started",
+      progress: 100,
+      label: "Minecraft est lancé",
+      detail: "Bon jeu sur L'île des Cobayes !",
+    });
+    jeuLance = true;
   } catch (e) {
     afficherErreur(`Erreur : ${e}`);
+    mettreAJourProgressionLancement({
+      phase: "error",
+      progress: 0,
+      label: "Lancement interrompu",
+      detail: "Une erreur a empêché le démarrage du jeu.",
+    });
   } finally {
-    btnJouer.disabled = false;
-    btnJouer.innerHTML = contenuOriginal;
+    lancementEnCours = false;
+    if (jeuLance) {
+      btnJouer.disabled = true;
+      btnJouer.classList.add("btn-jouer--lance");
+      btnJouer.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m5 12 4.2 4.2L19.5 6" />
+        </svg>
+        Lancé
+      `;
+    } else {
+      btnJouer.disabled = false;
+      btnJouer.innerHTML = contenuOriginal;
+    }
   }
 });
 
@@ -746,6 +1072,7 @@ if (modalSkin) {
 // Ecouteurs d'evenements pour les news / notifications
 if (btnNavNews) btnNavNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
 if (btnNavAccueil) btnNavAccueil.addEventListener("click", () => activerOnglet(ongletAccueil, btnNavAccueil));
+if (btnVoirNews) btnVoirNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
 if (apercuNews) {
   apercuNews.addEventListener("click", (e) => {
     e.preventDefault();
@@ -758,6 +1085,22 @@ if (apercuNews) {
   });
 }
 if (btnBackToNews) btnBackToNews.addEventListener("click", revenirAListeNews);
+
+// Les WebViews Tauri ne doivent jamais naviguer à l'intérieur du launcher :
+// les liens écrits dans une news s'ouvrent dans le navigateur de l'utilisateur.
+if (newsDetailContent) {
+  newsDetailContent.addEventListener("click", async (e) => {
+    const lien = e.target instanceof Element ? e.target.closest("a[href]") : null;
+    if (!lien) return;
+
+    e.preventDefault();
+    try {
+      await openUrl(lien.href);
+    } catch (error) {
+      console.warn("Impossible d'ouvrir le lien externe :", error);
+    }
+  });
+}
 
 if (btnNotifications) {
   btnNotifications.addEventListener("click", (e) => {
@@ -794,7 +1137,7 @@ function definirProfil(nom) {
   // Charger les news (aperçu accueil + notifications), indépendamment du
   // profil Discord — c'est juste au moment où on arrive sur l'écran de jeu.
   chargerNews();
-  
+
   // Mettre à jour les news toutes les 5 minutes
   setInterval(chargerNews, 5 * 60 * 1000);
 }

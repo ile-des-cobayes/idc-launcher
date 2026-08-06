@@ -138,17 +138,17 @@ fn html_escape(s: &str) -> String {
 
 const CSS_COMMUN: &str = r#"
 :root {
-  --bg-void: #0a0912;
-  --bg-surface-2: #1f1a2e;
-  --bg-surface-3: #241f38;
-  --accent: #a259ff;
-  --accent-bright: #c084fc;
-  --accent-dim: #6d3fc4;
-  --text-primary: #f2f0fa;
-  --text-muted: #8b87a0;
-  --online: #4ade80;
+  --bg-void: #07100b;
+  --bg-surface-2: #16291b;
+  --bg-surface-3: #1e3523;
+  --accent: #79c95c;
+  --accent-bright: #c4f18d;
+  --accent-dim: #3f8548;
+  --text-primary: #f2f8ef;
+  --text-muted: #9eb6a1;
+  --online: #7ee580;
   --danger: #ff5a6e;
-  --border: rgba(162, 89, 255, 0.28);
+  --border: rgba(210, 241, 213, 0.13);
   --font-display: "Space Grotesk", sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -194,7 +194,7 @@ html, body {
   background: linear-gradient(160deg, var(--bg-surface-2), var(--bg-surface-3));
   border: 1px solid var(--border);
   border-radius: 20px;
-  box-shadow: 0 24px 60px -20px rgba(162, 89, 255, 0.45);
+  box-shadow: 0 24px 60px -20px rgba(70, 158, 65, 0.35);
 }
 .marque-icone {
   width: 56px;
@@ -281,7 +281,7 @@ fn build_response_html(outcome: &Result<DiscordUser, String>) -> String {
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>Connexion réussie — IDC Launcher</title>
+<title>Connexion réussie — L'île des Cobayes</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>{css}</style>
 </head>
@@ -292,7 +292,7 @@ fn build_response_html(outcome: &Result<DiscordUser, String>) -> String {
   <span class="shard shard-3"></span>
 </div>
 <div class="carte">
-  <div class="marque-icone">IDC</div>
+  <div class="marque-icone">LC</div>
   <div class="coche">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
   </div>
@@ -315,7 +315,7 @@ fn build_response_html(outcome: &Result<DiscordUser, String>) -> String {
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>Échec de connexion — IDC Launcher</title>
+<title>Échec de connexion — L'île des Cobayes</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>{css}</style>
 </head>
@@ -326,7 +326,7 @@ fn build_response_html(outcome: &Result<DiscordUser, String>) -> String {
   <span class="shard shard-3"></span>
 </div>
 <div class="carte">
-  <div class="marque-icone">IDC</div>
+  <div class="marque-icone">LC</div>
   <div class="coche coche--erreur">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
   </div>

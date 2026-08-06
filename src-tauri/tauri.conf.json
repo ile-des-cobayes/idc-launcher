@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "idc-launcher",
+  "productName": "L'île des Cobayes",
   "version": "0.1.0",
   "identifier": "fr.bowsy.idc-launcher",
   "build": {
@@ -10,9 +10,11 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "idc-launcher",
-        "width": 800,
-        "height": 600
+        "title": "L'île des Cobayes",
+        "width": 480,
+        "height": 760,
+        "minWidth": 480,
+        "minHeight": 720
       }
     ],
     "security": {

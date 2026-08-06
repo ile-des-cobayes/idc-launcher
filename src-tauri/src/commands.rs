@@ -3,19 +3,173 @@ use crate::discord_auth::DiscordUser;
 use crate::news::NewsItem;
 use crate::resources::{ResourceManager, SyncResult, FileInfo};
 use crate::AppState;
-use tauri::State;
+use serde::Serialize;
+use tauri::{Emitter, Manager, State};
 
-/// Installe et lance le jeu pour le pseudo donné. Le travail bloquant
-/// (installation + attente du process Java) tourne dans un thread dédié
-/// via `spawn_blocking`, pour ne jamais geler le runtime tokio partagé
-/// avec l'auth Discord et la DB.
-///
-/// La synchronisation des ressources (mods, configs, etc.) se fait AVANT
-/// le lancement du jeu.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchProgress {
+    phase: String,
+    progress: u8,
+    label: String,
+    detail: String,
+}
+
+fn emit_launch_progress(
+    app: &tauri::AppHandle,
+    phase: &str,
+    progress: u8,
+    label: &str,
+    detail: impl Into<String>,
+) {
+    let update = LaunchProgress {
+        phase: phase.to_string(),
+        progress,
+        label: label.to_string(),
+        detail: detail.into(),
+    };
+
+    if let Err(error) = app.emit("launcher-progress", update) {
+        eprintln!("Impossible d'envoyer la progression du launcher : {error}");
+    }
+}
+
+/// Bascule la taille de la fenêtre principale entre le parcours de connexion
+/// portrait et le hub du launcher. Cette commande tourne côté natif : elle
+/// reste fiable même lorsqu'une implémentation de WebView refuse une demande
+/// de redimensionnement provenant du JavaScript.
 #[tauri::command]
-pub async fn launch_game(username: String, state: State<'_, AppState>) -> Result<(), String> {
+pub fn set_launcher_window_mode(mode: String, app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Fenêtre principale introuvable".to_string())?;
+
+    if mode == "hub" {
+        // On se base sur la zone de travail (dock/barre des tâches exclue), et non
+        // sur une taille fixe. Cela laisse toujours respirer le bureau, y compris
+        // sur les écrans 13 pouces ou les configurations avec mise à l'échelle.
+        let monitor = window
+            .current_monitor()
+            .map_err(|e| e.to_string())?
+            .or(app.primary_monitor().map_err(|e| e.to_string())?);
+
+        if let Some(monitor) = monitor {
+            let work_area = monitor.work_area();
+            let scale_factor = window.scale_factor().map_err(|e| e.to_string())?;
+            let available_width = work_area.size.width as f64 / scale_factor;
+            let available_height = work_area.size.height as f64 / scale_factor;
+            let width = (available_width * 0.86)
+                .min(1280.0)
+                .max(640.0)
+                .min(available_width);
+            let height = (available_height * 0.84)
+                .min(760.0)
+                .max(500.0)
+                .min(available_height);
+
+            window
+                .set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(
+                    width.min(960.0),
+                    height.min(620.0),
+                ))))
+                .map_err(|e| e.to_string())?;
+            window
+                .set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)))
+                .map_err(|e| e.to_string())?;
+        } else {
+            // Cas exceptionnel (aucun moniteur exposé par l'OS) : un format
+            // confortable mais plus compact que l'ancien 1360 × 800.
+            window
+                .set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(
+                    960.0, 620.0,
+                ))))
+                .map_err(|e| e.to_string())?;
+            window
+                .set_size(tauri::Size::Logical(tauri::LogicalSize::new(1280.0, 760.0)))
+                .map_err(|e| e.to_string())?;
+        }
+    } else if mode == "login" {
+        window
+            .set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(
+                480.0, 720.0,
+            ))))
+            .map_err(|e| e.to_string())?;
+        window
+            .set_size(tauri::Size::Logical(tauri::LogicalSize::new(480.0, 760.0)))
+            .map_err(|e| e.to_string())?;
+    } else {
+        return Err("Mode de fenêtre inconnu".to_string());
+    }
+
+    window.center().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Synchronise le jeu, installe le profil Minecraft puis démarre Java. Chaque
+/// jalon est envoyé au frontend via l'événement `launcher-progress`.
+#[tauri::command]
+pub async fn launch_game(
+    username: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let resource_manager = state.resource_manager.clone();
-    crate::game::lancer_jeu_avec_ressources(username, resource_manager).await
+    emit_launch_progress(
+        &app,
+        "preparing",
+        6,
+        "Préparation du launcher",
+        "Vérification de ton installation",
+    );
+    emit_launch_progress(
+        &app,
+        "syncing",
+        20,
+        "Synchronisation de l'île",
+        "Vérification des mods, configurations et ressources",
+    );
+
+    let sync_result = resource_manager
+        .sync_game_resources()
+        .await
+        .map_err(|error| format!("Erreur de synchronisation des ressources : {error}"))?;
+
+    if !sync_result.errors.is_empty() {
+        let (path, error) = &sync_result.errors[0];
+        return Err(format!(
+            "Synchronisation incomplète ({} erreur(s)) : {} — {}",
+            sync_result.errors.len(),
+            path.display(),
+            error
+        ));
+    }
+
+    let changed_files = sync_result.downloaded.len() + sync_result.updated.len() + sync_result.deleted.len();
+    let sync_detail = if changed_files == 0 {
+        "Ton installation est déjà à jour.".to_string()
+    } else {
+        format!("{changed_files} fichier(s) mis à jour.")
+    };
+    emit_launch_progress(
+        &app,
+        "synced",
+        64,
+        "Installation synchronisée",
+        sync_detail,
+    );
+
+    let game_app = app.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::game::lancer_jeu_bloquant_avec_progress(
+            &username,
+            move |phase, progress, label, detail| {
+                emit_launch_progress(&game_app, phase, progress, label, detail);
+            },
+        )
+    })
+    .await
+    .map_err(|error| format!("Erreur interne lors du lancement : {error}"))?
 }
 
 /// Démarre le serveur de callback local et renvoie l'URL d'auth Discord
@@ -145,6 +299,104 @@ pub async fn get_game_directory() -> Result<String, String> {
 // le comportement voulu : on préfère un échec net à la compilation plutôt
 // qu'un fallback silencieux vers localhost en prod.
 const SKIN_API_URL: &str = env!("SKIN_API_URL");
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LauncherCape {
+    id: String,
+    name: String,
+    description: String,
+    price: i64,
+    purchasable: bool,
+    texture_url: String,
+    owned: bool,
+    selected: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CosmeticsResponse {
+    balance: i64,
+    selected_cape_id: Option<String>,
+    capes: Vec<LauncherCape>,
+}
+
+fn cosmetics_response(profile: crate::database::CosmeticsProfile) -> CosmeticsResponse {
+    CosmeticsResponse {
+        balance: profile.balance,
+        selected_cape_id: profile.selected_cape_id,
+        capes: profile
+            .capes
+            .into_iter()
+            .map(|cape| LauncherCape {
+                id: cape.id,
+                name: cape.name,
+                description: cape.description,
+                price: cape.price,
+                purchasable: cape.purchasable,
+                texture_url: format!(
+                    "{}/textures/{}",
+                    SKIN_API_URL.trim_end_matches('/'),
+                    cape.texture_filename
+                ),
+                owned: cape.owned,
+                selected: cape.selected,
+            })
+            .collect(),
+    }
+}
+
+/// Récupère le portefeuille, le catalogue disponible et les capes possédées.
+#[tauri::command]
+pub async fn get_cape_shop(
+    discord_id: String,
+    state: State<'_, AppState>,
+) -> Result<CosmeticsResponse, String> {
+    let db_guard = state.db.lock().await;
+    match db_guard.as_ref() {
+        Some(db) => db
+            .get_cosmetics_profile(&discord_id)
+            .await
+            .map(cosmetics_response),
+        None => Err("Base de données non connectée".to_string()),
+    }
+}
+
+/// Achète une cape. Le débit du portefeuille et l'ajout à la collection sont
+/// réalisés dans la même transaction MySQL.
+#[tauri::command]
+pub async fn purchase_cape(
+    discord_id: String,
+    cape_id: String,
+    state: State<'_, AppState>,
+) -> Result<CosmeticsResponse, String> {
+    let db_guard = state.db.lock().await;
+    match db_guard.as_ref() {
+        Some(db) => db
+            .purchase_cape(&discord_id, &cape_id)
+            .await
+            .map(cosmetics_response),
+        None => Err("Base de données non connectée".to_string()),
+    }
+}
+
+/// Sélectionne une cape détenue, ou retire la cape active lorsque `cape_id`
+/// est null. L'API de skins lira ce choix à la prochaine requête du mod.
+#[tauri::command]
+pub async fn select_cape(
+    discord_id: String,
+    cape_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<CosmeticsResponse, String> {
+    let db_guard = state.db.lock().await;
+    match db_guard.as_ref() {
+        Some(db) => db
+            .select_cape(&discord_id, cape_id.as_deref())
+            .await
+            .map(cosmetics_response),
+        None => Err("Base de données non connectée".to_string()),
+    }
+}
 
 /// Upload un skin pour un utilisateur
 #[tauri::command]

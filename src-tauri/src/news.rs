@@ -9,7 +9,13 @@ pub struct NewsItem {
     pub title: String,
     pub excerpt: String,
     pub content: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub featured: bool,
     pub cover_url: Option<String>,
+    #[serde(default)]
+    pub content_base_url: Option<String>,
     pub created_at: Option<String>,
 }
 
