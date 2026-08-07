@@ -93,10 +93,10 @@
             <path d="M8 9h8M8 13h8M8 17h5" />
           </svg>
         </button>
-        <button type="button" class="nav-icone" disabled title="Boutique — bientôt disponible">
+        <button type="button" id="btn-nav-capes" class="nav-icone" title="Capes">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M6 8h12l-1 12H7L6 8Z" />
-            <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+            <path d="M12 4 6 7v10l6 3 6-3V7l-6-3Z" />
+            <path d="M12 7v13" />
           </svg>
         </button>
       </nav>
@@ -154,6 +154,7 @@
             <input id="input-skin-upload" type="file" accept=".png" hidden />
           </label>
           <button id="btn-delete-skin" class="btn-danger">Supprimer le skin</button>
+          <button id="btn-goto-capes" class="btn-secondaire" type="button">Choisir ma cape</button>
         </div>
 
         <p id="skin-status" class="skin-status"></p>
@@ -240,6 +241,29 @@
             <div id="news-featured" class="news-featured"></div>
             <h3 class="news-latest-title">Tous les articles</h3>
             <div id="news-liste-onglet" class="news-grid"></div>
+          </div>
+        </section>
+
+        <!-- Onglet Capes -->
+        <section id="onglet-capes" class="onglet">
+          <div class="news-onglet-contenu news-page">
+            <header class="news-page-heading">
+              <div>
+                <p class="section-kicker">Collection</p>
+                <h2 class="news-onglet-titre">Capes</h2>
+              </div>
+              <p id="cape-shop-summary">Synchronisation de ta collection…</p>
+            </header>
+            <section class="cape-wallet">
+              <span class="cape-wallet-label">Portefeuille</span>
+              <strong id="cape-wallet-balance">0</strong>
+              <span class="cape-wallet-unit">éclats</span>
+            </section>
+            <div id="cape-shop-feedback" class="cape-shop-feedback cache"></div>
+            <div class="cape-shop-actions">
+              <button id="btn-remove-cape" type="button" class="btn-secondaire cache">Retirer la cape active</button>
+            </div>
+            <div id="cape-shop-grid" class="cape-shop-grid"></div>
           </div>
         </section>
 

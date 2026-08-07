@@ -113,6 +113,9 @@ pub fn run() {
             commands::has_custom_skin,
             commands::get_skin_model,
             commands::update_skin_model,
+            commands::get_cape_shop,
+            commands::purchase_cape,
+            commands::select_cape,
             commands::fetch_news,
         ])
         .run(tauri::generate_context!())

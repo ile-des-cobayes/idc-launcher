@@ -2,7 +2,7 @@ use crate::database::User;
 use crate::discord_auth::DiscordUser;
 use crate::news::NewsItem;
 use crate::resources::{ResourceManager, SyncResult, FileInfo};
-use crate::AppState;
+use crate::{database, AppState};
 use serde::Serialize;
 use tauri::{Emitter, Manager, State};
 
@@ -168,8 +168,8 @@ pub async fn launch_game(
             },
         )
     })
-    .await
-    .map_err(|error| format!("Erreur interne lors du lancement : {error}"))?
+        .await
+        .map_err(|error| format!("Erreur interne lors du lancement : {error}"))?
 }
 
 /// Démarre le serveur de callback local et renvoie l'URL d'auth Discord
@@ -299,6 +299,117 @@ pub async fn get_game_directory() -> Result<String, String> {
 // le comportement voulu : on préfère un échec net à la compilation plutôt
 // qu'un fallback silencieux vers localhost en prod.
 const SKIN_API_URL: &str = env!("SKIN_API_URL");
+
+/// Base des covers de capes, servies par le panneau admin (même logique que
+/// news_covers/ pour les news, voir index.php). Fichier attendu :
+/// {CAPE_COVERS_URL}/{cape_id}_cover.png
+///
+/// Contrairement à SKIN_API_URL, ce n'est pas embarqué via env!() car ce
+/// n'est pas une donnée sensible ni amenée à changer par déploiement : c'est
+/// une URL publique fixe du panneau admin.
+const CAPE_COVERS_URL: &str = "https://idcadmin.ouepamal.fr/cape_covers";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LauncherCape {
+    id: String,
+    name: String,
+    description: Option<String>,
+    price: u64,
+    purchasable: bool,
+    texture_url: String,
+    cover_url: String,
+    owned: bool,
+    selected: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CosmeticsResponse {
+    balance: u64,
+    selected_cape_id: Option<String>,
+    capes: Vec<LauncherCape>,
+}
+
+fn cosmetics_response(profile: database::CapeShopProfile) -> CosmeticsResponse {
+    CosmeticsResponse {
+        balance: profile.balance,
+        selected_cape_id: profile.selected_cape_id,
+        capes: profile
+            .capes
+            .into_iter()
+            .map(|cape| {
+                let cover_url = format!("{}/{}_cover.png", CAPE_COVERS_URL, cape.id);
+                LauncherCape {
+                    id: cape.id,
+                    name: cape.name,
+                    description: cape.description,
+                    price: cape.price,
+                    purchasable: cape.purchasable,
+                    texture_url: cape.texture_url,
+                    cover_url,
+                    owned: cape.owned,
+                    selected: cape.selected,
+                }
+            })
+            .collect(),
+    }
+}
+
+/// Récupère le portefeuille, le catalogue disponible et les capes possédées.
+#[tauri::command]
+pub async fn get_cape_shop(
+    discord_id: String,
+    state: State<'_, AppState>,
+) -> Result<CosmeticsResponse, String> {
+    let db_guard = state.db.lock().await;
+
+    match db_guard.as_ref() {
+        Some(db) => db
+            .get_cape_shop_profile(&discord_id, SKIN_API_URL)
+            .await
+            .map(cosmetics_response),
+        None => Err("Base de données non connectée".to_string()),
+    }
+}
+
+/// Achète une cape. Le débit du portefeuille et l'ajout à la collection sont
+/// réalisés dans la même transaction MySQL.
+#[tauri::command]
+pub async fn purchase_cape(
+    discord_id: String,
+    cape_id: String,
+    state: State<'_, AppState>,
+) -> Result<CosmeticsResponse, String> {
+    let db_guard = state.db.lock().await;
+
+    match db_guard.as_ref() {
+        Some(db) => db
+            .purchase_cape(&discord_id, &cape_id, SKIN_API_URL)
+            .await
+            .map(cosmetics_response),
+        None => Err("Base de données non connectée".to_string()),
+    }
+}
+
+/// Sélectionne une cape détenue, ou retire la cape active lorsque `cape_id`
+/// est null. L'API de skins lira ce choix à la prochaine requête du mod.
+#[tauri::command]
+pub async fn select_cape(
+    discord_id: String,
+    cape_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<CosmeticsResponse, String> {
+    let db_guard = state.db.lock().await;
+
+    match db_guard.as_ref() {
+        Some(db) => db
+            .select_cape(&discord_id, cape_id.as_deref(), SKIN_API_URL)
+            .await
+            .map(cosmetics_response),
+        None => Err("Base de données non connectée".to_string()),
+    }
+}
 
 /// Upload un skin pour un utilisateur
 #[tauri::command]

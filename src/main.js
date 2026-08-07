@@ -31,7 +31,6 @@ const btnCloseModal = document.getElementById("btn-close-modal");
 const skinStatus = document.getElementById("skin-status");
 const modelSteve = document.getElementById("model-steve");
 const modelAlex = document.getElementById("model-alex");
-const btnGotoCapes = document.getElementById("btn-goto-capes");
 
 // Gestion des news / notifications
 const btnNavNews = document.getElementById("btn-nav-news");
@@ -473,7 +472,6 @@ function afficherRetourCape(message, type = "info") {
   if (!capeShopFeedback) return;
   capeShopFeedback.textContent = message;
   capeShopFeedback.className = `cape-shop-feedback cape-shop-feedback--${type}`;
-  capeShopFeedback.classList.remove("cache");
 }
 
 function formatNombreEclats(value) {
@@ -502,27 +500,46 @@ function rendreBoutiqueCapes(profile) {
   }
 
   for (const cape of capes) {
+    const locked = !cape.owned && !cape.purchasable;
     const card = document.createElement("article");
-    card.className = `cape-card${cape.selected ? " cape-card--selected" : ""}${cape.owned ? " cape-card--owned" : ""}`;
+    card.className = `cape-card${cape.selected ? " cape-card--selected" : ""}${cape.owned ? " cape-card--owned" : ""}${locked ? " cape-card--locked" : ""}`;
     const price = formatNombreEclats(cape.price);
-    const action = cape.owned
-        ? (cape.selected
-            ? `<span class="cape-card-active">Équipée</span>`
-            : `<button class="cape-card-action cape-card-action--select" type="button" data-cape-action="select" data-cape-id="${echapperHtml(cape.id)}">Équiper</button>`)
-        : `<button class="cape-card-action" type="button" data-cape-action="buy" data-cape-id="${echapperHtml(cape.id)}">Débloquer <span>${price} ✦</span></button>`;
 
+    let action;
+    if (cape.owned) {
+      action = cape.selected
+          ? `<span class="cape-card-active">Équipée</span>`
+          : `<button class="cape-card-action cape-card-action--select" type="button" data-cape-action="select" data-cape-id="${echapperHtml(cape.id)}">Équiper</button>`;
+    } else if (locked) {
+      action = `<span class="cape-card-locked">Ne peut pas être achetée</span>`;
+    } else {
+      action = `<button class="cape-card-action" type="button" data-cape-action="buy" data-cape-id="${echapperHtml(cape.id)}">Débloquer <span>${price} ✦</span></button>`;
+    }
+
+    let footerPrice;
+    if (cape.owned) {
+      footerPrice = `<span class="cape-card-price">Dans ta collection</span>`;
+    } else if (locked) {
+      footerPrice = "";
+    } else {
+      footerPrice = `<span class="cape-card-price">${price} éclats</span>`;
+    }
+
+    // On affiche la cover de présentation de la cape (générée côté panneau
+    // admin), pas la texture brute utilisée en jeu par le mod de skins.
     card.innerHTML = `
       <div class="cape-card-art">
         <span class="cape-card-glow" aria-hidden="true"></span>
-        <img src="${echapperHtml(cape.textureUrl)}" alt="Aperçu de la cape ${echapperHtml(cape.name)}" />
+        <img src="${echapperHtml(cape.coverUrl)}" alt="Aperçu de la cape ${echapperHtml(cape.name)}" />
         ${cape.selected ? '<span class="cape-card-badge">Active</span>' : ""}
         ${cape.owned && !cape.selected ? '<span class="cape-card-badge cape-card-badge--owned">Possédée</span>' : ""}
+        ${locked ? '<span class="cape-card-badge cape-card-badge--locked">Non achetable</span>' : ""}
       </div>
       <div class="cape-card-copy">
         <h3>${echapperHtml(cape.name)}</h3>
         <p>${echapperHtml(cape.description || "Une pièce rare de la collection de l'île.")}</p>
         <div class="cape-card-footer">
-          ${cape.owned ? '<span class="cape-card-price">Dans ta collection</span>' : `<span class="cape-card-price">${price} éclats</span>`}
+          ${footerPrice}
           ${action}
         </div>
       </div>
@@ -1039,12 +1056,6 @@ btnJouer.addEventListener("click", async () => {
 if (btnProfil) btnProfil.addEventListener("click", openSkinModal);
 if (btnCloseModal) btnCloseModal.addEventListener("click", closeSkinModal);
 if (btnDeleteSkin) btnDeleteSkin.addEventListener("click", deleteCustomSkin);
-if (btnGotoCapes) {
-  btnGotoCapes.addEventListener("click", () => {
-    closeSkinModal();
-    activerOnglet(ongletCapes, btnNavCapes);
-  });
-}
 
 // Gestion du changement de modèle
 if (modelSteve && modelAlex) {
@@ -1083,7 +1094,6 @@ if (modalSkin) {
 // Ecouteurs d'evenements pour les news / notifications
 if (btnNavNews) btnNavNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
 if (btnNavAccueil) btnNavAccueil.addEventListener("click", () => activerOnglet(ongletAccueil, btnNavAccueil));
-if (btnNavCapes) btnNavCapes.addEventListener("click", () => activerOnglet(ongletCapes, btnNavCapes));
 if (btnVoirNews) btnVoirNews.addEventListener("click", () => activerOnglet(ongletNews, btnNavNews));
 if (apercuNews) {
   apercuNews.addEventListener("click", (e) => {
@@ -1098,21 +1108,27 @@ if (apercuNews) {
 }
 if (btnBackToNews) btnBackToNews.addEventListener("click", revenirAListeNews);
 
-// Ecouteurs d'evenements pour la boutique de capes
+if (btnNavCapes) btnNavCapes.addEventListener("click", () => activerOnglet(ongletCapes, btnNavCapes));
+
+// Délégation de clic sur la grille de la boutique : achat ou équipement d'une cape.
 if (capeShopGrid) {
   capeShopGrid.addEventListener("click", (e) => {
-    const bouton = e.target.closest("[data-cape-action]");
+    const bouton = e.target instanceof Element ? e.target.closest("[data-cape-action]") : null;
     if (!bouton) return;
-    const capeId = bouton.dataset.capeId;
+
     const action = bouton.dataset.capeAction;
+    const capeId = bouton.dataset.capeId;
     if (!capeId) return;
-    if (action === "buy") acheterCape(capeId);
-    if (action === "select") selectionnerCape(capeId);
+
+    if (action === "buy") {
+      acheterCape(capeId);
+    } else if (action === "select") {
+      selectionnerCape(capeId);
+    }
   });
 }
-if (btnRemoveCape) {
-  btnRemoveCape.addEventListener("click", () => selectionnerCape(null));
-}
+
+if (btnRemoveCape) btnRemoveCape.addEventListener("click", () => selectionnerCape(null));
 
 // Les WebViews Tauri ne doivent jamais naviguer à l'intérieur du launcher :
 // les liens écrits dans une news s'ouvrent dans le navigateur de l'utilisateur.
@@ -1165,9 +1181,6 @@ function definirProfil(nom) {
   // Charger les news (aperçu accueil + notifications), indépendamment du
   // profil Discord — c'est juste au moment où on arrive sur l'écran de jeu.
   chargerNews();
-
-  // Charge le portefeuille et la boutique de capes.
-  chargerBoutiqueCapes();
 
   // Mettre à jour les news toutes les 5 minutes
   setInterval(chargerNews, 5 * 60 * 1000);

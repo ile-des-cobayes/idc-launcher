@@ -88,6 +88,35 @@ input::placeholder { color: #708875; } input:focus { border-color: var(--line-br
 .news-liste, .notif-liste { display: flex; flex-direction: column; gap: 9px; }.notif-liste { max-height: 300px; overflow: auto; }.news-item { display: flex; gap: 10px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: #172a1b; }.news-item-cover { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; }.news-item-corps { min-width: 0; }.news-item-date, .news-item-extrait { margin: 0; color: var(--muted); font-size: 10px; }.news-item-titre { margin: 3px 0; font-size: 12px; }.news-item-toggle { padding: 0; border: 0; background: none; color: var(--green-bright); font-size: 11px; cursor: pointer; }
 .news-detail-contenu { background: linear-gradient(180deg, rgba(13, 31, 18, .9), #0a150d); }.news-detail-article { width: min(850px, 100%); margin: 0 auto; }.btn-retour-news { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 24px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }.news-detail-cover-container { height: 300px; margin-bottom: 28px; }.news-detail-cover { width: 100%; height: 100%; border-radius: 15px; object-fit: cover; }.news-detail-date { color: var(--green-bright); font-size: 11px; }.news-detail-title { font: 700 42px/1 var(--font-display); letter-spacing: -.06em; }.news-detail-content { color: #c6d7c8; line-height: 1.75; }.news-detail-content img { max-width: 100%; border-radius: 12px; }
 
+/* Boutique des capes : wallet, collection et actions d'achat/sélection. */
+.cape-wallet { display: inline-flex; align-items: baseline; gap: 8px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: rgba(11, 26, 15, .75); }
+.cape-wallet-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+.cape-wallet strong { color: var(--green-bright); font: 700 28px/1 var(--font-display); letter-spacing: -.03em; }
+.cape-wallet-unit { color: #b8ccb9; font-size: 13px; }
+.cape-shop-actions { margin: 0 0 14px; }
+.cape-shop-feedback { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: rgba(12, 26, 16, .8); color: #d5e3d6; font-size: 12px; }
+.cape-shop-feedback--success { border-color: rgba(126, 229, 128, .5); color: #c8efcb; }
+.cape-shop-feedback--error { border-color: rgba(255, 119, 131, .5); color: #ffbec6; }
+.cape-shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.cape-shop-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.cape-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 13px; background: rgba(11, 25, 15, .78); overflow: hidden; }
+.cape-card--selected { border-color: rgba(171, 237, 126, .45); box-shadow: 0 0 0 1px rgba(171, 237, 126, .18) inset; }
+.cape-card-art { position: relative; height: 164px; display: grid; place-items: center; background: linear-gradient(150deg, #163725, #102116); overflow: hidden; }
+.cape-card-glow { position: absolute; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, rgba(157, 230, 115, .25), transparent 70%); }
+.cape-card-art img { position: relative; z-index: 1; width: 74px; image-rendering: pixelated; }
+.cape-card-badge { position: absolute; top: 10px; right: 10px; z-index: 2; padding: 4px 7px; border-radius: 999px; background: rgba(126, 229, 128, .22); color: #c8efcb; font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+.cape-card-badge--owned { background: rgba(212, 240, 174, .18); color: #d7ecbd; }
+.cape-card-copy { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.cape-card-copy h3 { margin: 0; font-size: 16px; line-height: 1.2; }
+.cape-card-copy p { margin: 0; color: #a7bea9; font-size: 12px; line-height: 1.5; min-height: 36px; }
+.cape-card-footer { margin-top: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cape-card-price { color: #b7cdb9; font-size: 11px; }
+.cape-card-action { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(185, 238, 139, .45); border-radius: 8px; padding: 8px 10px; background: rgba(120, 196, 95, .12); color: var(--green-bright); font-size: 11px; font-weight: 700; cursor: pointer; }
+.cape-card-action:hover { filter: brightness(1.08); }
+.cape-card-action--select { border-color: rgba(209, 243, 170, .45); background: rgba(209, 243, 170, .12); color: #d5efb4; }
+.cape-card-active, .cape-card-locked { font-size: 11px; color: #bdcfbe; }
+.cape-card-locked { color: #d5b98a; }
+
 /* Skin management remains available and matches the new system. */
 .modal { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3, 9, 5, .72); backdrop-filter: blur(8px); }.modal-contenu { width: min(500px, 100%); max-height: 90vh; overflow: auto; padding: 28px; border: 1px solid var(--line); border-radius: 17px; background: #102017; box-shadow: 0 30px 80px rgba(0,0,0,.45); }.modal-contenu h2 { margin: 0 0 22px; font: 700 25px var(--font-display); }.skin-preview { margin-bottom: 20px; text-align: center; }.skin-preview img { max-width: 180px; max-height: 260px; border-radius: 8px; background: #1b3821; image-rendering: pixelated; }.model-selector h3 { color: var(--muted); font-size: 12px; }.radio-group, .skin-actions { display: flex; flex-wrap: wrap; gap: 10px; }.radio-label { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }.radio-label input { display: none; }.radio-custom { width: 13px; height: 13px; border: 2px solid var(--muted); border-radius: 50%; }.radio-label input:checked + .radio-custom { border-color: var(--green); background: var(--green); box-shadow: inset 0 0 0 3px #122118; }.radio-text { font-size: 12px; }.skin-actions { margin-top: 20px; }.btn-secondaire, .btn-danger, .btn-fermer { padding: 10px 13px; border: 1px solid var(--line); border-radius: 8px; background: #1c3522; color: var(--text); font-size: 12px; cursor: pointer; }.btn-danger { border-color: #823641; background: #482129; }.btn-fermer { width: 100%; margin-top: 12px; }.skin-status { min-height: 18px; color: var(--muted); font-size: 12px; }.skin-status.success { color: var(--online); }.skin-status.error { color: #ff9ba7; }
 
