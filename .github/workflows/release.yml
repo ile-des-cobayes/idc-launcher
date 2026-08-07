@@ -43,7 +43,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             build-essential \
@@ -67,6 +66,10 @@ jobs:
 
       - name: Installer les dépendances front-end
         run: npm ci
+
+      - name: Recréer src-tauri/.env à partir du secret GitHub
+        shell: bash
+        run: printf '%s\n' "${{ secrets.SRC_TAURI_ENV_FILE }}" > src-tauri/.env
 
       - name: Build & bundle Tauri
         uses: tauri-apps/tauri-action@v0
