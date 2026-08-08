@@ -27,7 +27,7 @@ jobs:
           # Windows -> pas d'installeur (le bundler NSIS a un bug amont),
           # on livre directement l'exécutable .exe brut
           - platform: 'windows-latest'
-            args: '--bundles none'
+            args: '--no-bundle'
             uploadPlainBinary: true
 
     runs-on: ${{ matrix.platform }}
