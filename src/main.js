@@ -295,7 +295,6 @@ async function loadSkinModel() {
   }
 }
 
-// Met à jour le modèle dans la DB
 async function updateSkinModelInDB() {
   if (!discordUserCourant || !discordUserCourant.id) return;
 
@@ -365,7 +364,6 @@ function validateSkinDimensions(file) {
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
 
-      // Vérifier le format PNG
       if (!file.name.toLowerCase().endsWith('.png')) {
         reject("Le fichier doit être au format PNG");
         return;
@@ -435,7 +433,6 @@ async function uploadNewSkin(file) {
   }
 }
 
-// Supprimer le skin custom
 async function deleteCustomSkin() {
   if (!discordUserCourant || !discordUserCourant.id) return;
 
@@ -1018,7 +1015,27 @@ btnJouer.addEventListener("click", async () => {
   });
 
   try {
-    await invoke("launch_game", { username: usernameCourant });
+    // On récupère le token Discord depuis discordUserCourant
+    let discordToken = discordUserCourant?.accessToken || discordUserCourant?.access_token;
+    
+    // Si on a un token, on l'utilise directement
+    // Sinon, on essaie de rafraîchir automatiquement via le backend
+    if (!discordToken) {
+      try {
+        // Essayer de rafraîchir le token Discord via le refresh token stocké
+        discordUserCourant = await invoke("refresh_discord_token");
+        discordToken = discordUserCourant?.accessToken || discordUserCourant?.access_token;
+      } catch (e) {
+        // Si le rafraîchissement échoue, on demande une nouvelle auth
+        throw new Error("Session expirée. Veuillez vous reconnecter.");
+      }
+    }
+    
+    if (!discordToken) {
+      throw new Error("Token Discord non disponible. Veuillez vous reconnecter.");
+    }
+    
+    await invoke("launch_game", { username: usernameCourant, discordToken: discordToken });
     mettreAJourProgressionLancement({
       phase: "started",
       progress: 100,

@@ -111,9 +111,22 @@ pub fn set_launcher_window_mode(mode: String, app: tauri::AppHandle) -> Result<(
 #[tauri::command]
 pub async fn launch_game(
     username: String,
+    discord_token: Option<String>,
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    // Si on n'a pas de token Discord, essayer de rafraîchir depuis le refresh token
+    let discord_token = match discord_token {
+        Some(token) => token,
+        None => {
+            // Essayer de rafraîchir le token automatiquement
+            let discord_auth = state.discord_auth.clone();
+            discord_auth
+                .get_valid_access_token()
+                .await
+                .map_err(|_| "Token Discord expiré. Veuillez vous reconnecter.".to_string())?
+        }
+    };
     let resource_manager = state.resource_manager.clone();
     emit_launch_progress(
         &app,
@@ -162,6 +175,7 @@ pub async fn launch_game(
     let game_app = app.clone();
     tokio::task::spawn_blocking(move || {
         crate::game::lancer_jeu_bloquant_avec_progress(
+            Some(&discord_token),
             &username,
             move |phase, progress, label, detail| {
                 emit_launch_progress(&game_app, phase, progress, label, detail);
@@ -207,6 +221,26 @@ pub async fn complete_discord_auth(state: State<'_, AppState>) -> Result<Discord
     state.callback_server.reset().await;
 
     result
+}
+
+/// Rafraîchit le token Discord en utilisant le refresh token stocké
+/// Retourne un nouveau DiscordUser avec le nouvel access_token
+#[tauri::command]
+pub async fn refresh_discord_token(state: State<'_, AppState>) -> Result<DiscordUser, String> {
+    let discord_auth = state.discord_auth.clone();
+    
+    let access_token = discord_auth
+        .get_valid_access_token()
+        .await?;
+    
+    let user_info = discord_auth
+        .get_user_info(&access_token)
+        .await?;
+    
+    Ok(DiscordUser {
+        access_token: Some(access_token),
+        ..user_info
+    })
 }
 
 #[tauri::command]

@@ -101,6 +101,7 @@ pub fn run() {
             commands::set_launcher_window_mode,
             commands::start_discord_auth,
             commands::complete_discord_auth,
+            commands::refresh_discord_token,
             commands::get_user_by_discord_id,
             commands::create_user,
             commands::launch_game,

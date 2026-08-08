@@ -39,4 +39,5 @@ tauri-plugin-store = "2.4.3"
 sha2 = "0.10"
 walkdir = "2.5"
 tempfile = "3.10"
+keyring = "3.0"
 

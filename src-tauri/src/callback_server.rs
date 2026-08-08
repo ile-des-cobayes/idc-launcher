@@ -59,8 +59,12 @@ impl CallbackServer {
                         let discord_auth = discord_auth.clone();
                         let code = code.clone();
                         rt_handle.block_on(async move {
-                            let token = discord_auth.exchange_code(&code).await?;
-                            discord_auth.get_user_info(&token).await
+                            let (access_token, _refresh_token) = discord_auth.exchange_code(&code).await?;
+                            let user_info = discord_auth.get_user_info(&access_token).await?;
+                            Ok(DiscordUser {
+                                access_token: Some(access_token),
+                                ..user_info
+                            })
                         })
                     } else {
                         let message = params
