@@ -90,3 +90,4 @@ jobs:
           prerelease: false
           uploadPlainBinary: ${{ matrix.uploadPlainBinary }}
           args: ${{ matrix.args }}
+
