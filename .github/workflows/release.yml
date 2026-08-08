@@ -14,18 +14,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS Universal (Intel + Apple Silicon en un seul binaire)
+          # macOS Universal (Intel + Apple Silicon) -> .dmg uniquement
           - platform: 'macos-latest'
-            args: '--target universal-apple-darwin'
+            args: '--target universal-apple-darwin --bundles dmg'
+            uploadPlainBinary: false
 
-          # Linux (le plus proche d'un "universal" reste l'AppImage,
-          # qui embarque ses dépendances)
+          # Linux -> AppImage uniquement (fichier portable unique)
           - platform: 'ubuntu-22.04'
-            args: ''
+            args: '--bundles appimage'
+            uploadPlainBinary: false
 
-          # Windows x64
+          # Windows -> pas d'installeur (le bundler NSIS a un bug amont),
+          # on livre directement l'exécutable .exe brut
           - platform: 'windows-latest'
-            args: ''
+            args: '--bundles none'
+            uploadPlainBinary: true
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -85,4 +88,5 @@ jobs:
           releaseBody: 'Voir les fichiers ci-dessous pour télécharger cette version.'
           releaseDraft: true
           prerelease: false
+          uploadPlainBinary: ${{ matrix.uploadPlainBinary }}
           args: ${{ matrix.args }}
