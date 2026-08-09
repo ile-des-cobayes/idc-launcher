@@ -168,14 +168,21 @@ fn replace_arg_value(args: &mut Vec<String>, flag: &str, value: &str) {
 }
 
 /// Prépare puis démarre Minecraft avec authentification Yggdrasil.
-/// Les étapes sont remontées au launcher par le callback.
-pub fn lancer_jeu_bloquant_avec_progress<F>(
+/// Les étapes sont remontées au launcher par le callback `on_progress`.
+/// `on_exit` est appelé une fois, dans un thread dédié, quand le processus
+/// du jeu se termine (fermeture normale OU crash) — `wait()` renvoie dans
+/// les deux cas, ça ne fait pas la différence en soi, mais le booléen
+/// transmis (succès du code de sortie) permet au launcher d'adapter le
+/// message si besoin.
+pub fn lancer_jeu_bloquant_avec_progress<F, E>(
     discord_token: Option<&str>,
     pseudo: &str,
     on_progress: F,
+    on_exit: E,
 ) -> Result<(), String>
 where
     F: Fn(&str, u8, &str, &str),
+    E: FnOnce(bool) + Send + 'static,
 {
     on_progress(
         "minecraft",
@@ -233,7 +240,7 @@ where
         "Installation de NeoForge",
         "Préparation des bibliothèques et du profil de jeu",
     );
-    let mut installer = forge::Installer::new(Loader::NeoForge, ForgeVersion::Name("21.1.232".to_string()));
+    let mut installer = forge::Installer::new(Loader::NeoForge, ForgeVersion::Name("21.1.248".to_string()));
 
     {
         let mojang = installer.mojang_mut();
@@ -267,10 +274,22 @@ where
         "Démarrage du jeu",
         "Lancement de Minecraft avec ton profil",
     );
-    // Le launcher ne doit pas rester verrouillé pendant toute la partie :
-    // `spawn` confirme le démarrage de Java puis rend immédiatement la main.
-    game.spawn()
+    
+    let mut child = game
+        .spawn()
         .map_err(|e| format!("Erreur lors du lancement du jeu : {e}"))?;
+
+    // Surveille la fermeture du jeu (fermeture normale ou crash) dans un
+    // thread dédié, pour ne pas bloquer le retour de cette fonction : le
+    // launcher considère le lancement comme terminé dès que le processus a
+    // démarré, pas quand il se ferme.
+    std::thread::spawn(move || {
+        let succes = child
+            .wait()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        on_exit(succes);
+    });
 
     on_progress(
         "started",

@@ -141,14 +141,24 @@ function afficherErreur(message) {
   erreur.classList.remove("cache");
 }
 
+// Constante pour sauvegarder le HTML initial du bouton Jouer
+const BOUTON_JOUER_HTML_INITIAL = btnJouer.innerHTML;
+
 function mettreAJourProgressionLancement(update) {
   if (!launchProgress) return;
 
-  const progress = Math.max(0, Math.min(100, Number(update?.progress) || 0));
   const phase = update?.phase || "preparing";
+  
+  // Le jeu tourne : la barre n'a plus d'utilité, on la masque directement
+  // plutôt que de laisser un "100% / Minecraft est lancé" figé à l'écran.
+  if (phase === "started") {
+    launchProgress.classList.add("cache");
+    return;
+  }
+
+  const progress = Math.max(0, Math.min(100, Number(update?.progress) || 0));
   launchProgress.classList.remove("cache");
   launchProgress.dataset.phase = phase;
-  launchProgress.classList.toggle("launch-progress--termine", phase === "started");
   launchProgress.classList.toggle("launch-progress--erreur", phase === "error");
 
   if (launchProgressLabel) {
@@ -162,6 +172,17 @@ function mettreAJourProgressionLancement(update) {
   if (launchProgressTrack) launchProgressTrack.setAttribute("aria-valuenow", String(progress));
 }
 
+// Redébloque le bouton "Jouer" : appelé quand le jeu se ferme (fermeture
+// normale ou crash), détecté côté Rust via l'event "game-exited".
+function reinitialiserBoutonJouer() {
+  jeuLance = false;
+  lancementEnCours = false;
+  btnJouer.disabled = false;
+  btnJouer.classList.remove("btn-jouer--lance");
+  btnJouer.innerHTML = BOUTON_JOUER_HTML_INITIAL;
+  if (launchProgress) launchProgress.classList.add("cache");
+}
+
 // Le backend envoie uniquement de vraies étapes du lancement : la barre ne
 // prétend donc jamais connaître un nombre d'octets qu'il ne peut pas mesurer.
 if (tauriEvent?.listen) {
@@ -169,6 +190,12 @@ if (tauriEvent?.listen) {
     mettreAJourProgressionLancement(payload);
   }).catch((error) => {
     console.warn("Écoute de la progression indisponible :", error);
+  });
+  
+  tauriEvent.listen("game-exited", () => {
+    reinitialiserBoutonJouer();
+  }).catch((error) => {
+    console.warn("Écoute de fermeture du jeu indisponible :", error);
   });
 }
 
@@ -237,8 +264,8 @@ async function updateAvatarDisplay() {
     // libre dans le launcher. On part exclusivement du skin associé à l'ID
     // Discord par l'API IDC, puis on en extrait la tête localement.
     const skinUrl = hasCustomSkin
-        ? `https://ouepamal.fr/skin-api/textures/${discordUserCourant.id}_skin.png`
-        : "https://ouepamal.fr/skin-api/textures/default_skin.png";
+        ? `https://ouepamal.fr/skin-api/textures/skins/${discordUserCourant.id}.png`
+        : "https://ouepamal.fr/skin-api/textures/skins/default.png";
     const headDataUrl = await extractHeadFromSkin(skinUrl);
 
     avatarSkin.onerror = () => {
@@ -313,8 +340,8 @@ async function updateSkinModelInDB() {
 async function loadSkinPreview() {
   if (!discordUserCourant || !discordUserCourant.id) return;
 
-  const skinUrl = `https://ouepamal.fr/skin-api/textures/${discordUserCourant.id}_skin.png`;
-  const defaultSkinUrl = `https://ouepamal.fr/skin-api/textures/default_skin.png`;
+  const skinUrl = `https://ouepamal.fr/skin-api/textures/skins/${discordUserCourant.id}.png`;
+  const defaultSkinUrl = `https://ouepamal.fr/skin-api/textures/skins/default.png`;
 
   try {
     const hasCustomSkin = await invoke("has_custom_skin", {
@@ -1005,8 +1032,7 @@ btnJouer.addEventListener("click", async () => {
   erreur.classList.add("cache");
   lancementEnCours = true;
   btnJouer.disabled = true;
-  const contenuOriginal = btnJouer.innerHTML;
-  btnJouer.textContent = "Préparation...";
+  btnJouer.innerHTML = "Préparation...";
   mettreAJourProgressionLancement({
     phase: "preparing",
     progress: 4,
@@ -1064,7 +1090,7 @@ btnJouer.addEventListener("click", async () => {
       `;
     } else {
       btnJouer.disabled = false;
-      btnJouer.innerHTML = contenuOriginal;
+      btnJouer.innerHTML = BOUTON_JOUER_HTML_INITIAL;
     }
   }
 });

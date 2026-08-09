@@ -173,12 +173,18 @@ pub async fn launch_game(
     );
 
     let game_app = app.clone();
+    let exit_app = app.clone();
     tokio::task::spawn_blocking(move || {
         crate::game::lancer_jeu_bloquant_avec_progress(
             Some(&discord_token),
             &username,
             move |phase, progress, label, detail| {
                 emit_launch_progress(&game_app, phase, progress, label, detail);
+            },
+            move |_succes| {
+                if let Err(error) = exit_app.emit("game-exited", ()) {
+                    eprintln!("Impossible d'envoyer l'événement de fermeture du jeu : {error}");
+                }
             },
         )
     })
