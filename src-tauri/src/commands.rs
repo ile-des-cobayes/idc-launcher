@@ -349,6 +349,7 @@ const SKIN_API_URL: &str = env!("SKIN_API_URL");
 /// une URL publique fixe du panneau admin.
 const CAPE_COVERS_URL: &str = "https://idcadmin.ouepamal.fr/cape_covers";
 
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherCape {

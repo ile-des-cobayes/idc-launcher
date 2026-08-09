@@ -278,6 +278,7 @@ impl ResourceManager {
             }
         }
 
+        
         if check_extra {
             // On scanne uniquement les dossiers racines présents dans CE
             // manifest, jamais local_base dans son intégralité.

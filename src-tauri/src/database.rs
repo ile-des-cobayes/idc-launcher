@@ -364,6 +364,7 @@ impl Database {
                 price - balance
             ));
         }
+        
 
         let next_balance = balance - price;
         sqlx::query("UPDATE wallets SET balance = ? WHERE discord_id = ?")

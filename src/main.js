@@ -366,6 +366,7 @@ async function loadSkinPreview() {
   }
 }
 
+
 // Ouvrir la modal de gestion du skin
 async function openSkinModal() {
   if (!discordUserCourant || !discordUserCourant.id) return;

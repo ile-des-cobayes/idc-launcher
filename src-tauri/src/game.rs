@@ -241,7 +241,7 @@ where
         "Préparation des bibliothèques et du profil de jeu",
     );
     let mut installer = forge::Installer::new(Loader::NeoForge, ForgeVersion::Name("21.1.248".to_string()));
-
+    
     {
         let mojang = installer.mojang_mut();
         mojang.set_version("1.21.1");
