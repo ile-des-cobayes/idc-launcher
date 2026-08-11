@@ -5,11 +5,13 @@ mod game;
 mod commands;
 mod resources;
 mod news;
+mod discord_rpc;
 
 use database::Database;
 use discord_auth::DiscordAuth;
 use callback_server::CallbackServer;
 use resources::ResourceManager;
+use discord_rpc::DiscordRpc;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
@@ -25,11 +27,14 @@ use tokio::sync::Mutex;
 ///
 /// `resource_manager` gère le téléchargement et la synchronisation des
 /// ressources du jeu (mods, resource packs, configs, etc.)
+///
+/// `discord_rpc` gère la présence Discord Rich Presence
 pub struct AppState {
     pub db: Mutex<Option<Database>>,
     pub discord_auth: Arc<DiscordAuth>,
     pub callback_server: CallbackServer,
     pub resource_manager: Arc<ResourceManager>,
+    pub discord_rpc: Arc<DiscordRpc>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -55,6 +60,9 @@ pub fn run() {
             .expect("Impossible d'initialiser le gestionnaire de ressources")
     );
 
+    // Initialiser le Discord RPC
+    let discord_rpc = Arc::new(DiscordRpc::new());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
@@ -62,8 +70,9 @@ pub fn run() {
             discord_auth: Arc::new(DiscordAuth::new()),
             callback_server: CallbackServer::new(),
             resource_manager,
+            discord_rpc: discord_rpc.clone(),
         })
-        .setup(|app| {
+        .setup(move |app| {
             // Le launcher commence sur l'écran de connexion, volontairement
             // portrait. Le frontend agrandit ensuite la même fenêtre pour le
             // hub de jeu, sans jamais la mettre en plein écran.
@@ -75,6 +84,15 @@ pub fn run() {
             }
 
             let handle = app.handle().clone();
+            let discord_rpc_clone = discord_rpc.clone();
+
+            // Connexion initiale au Discord RPC (dans le launcher)
+            tauri::async_runtime::spawn(async move {
+                let rpc = discord_rpc_clone.as_ref().clone();
+                if let Err(e) = rpc.connect().await {
+                    eprintln!("Erreur de connexion Discord RPC : {}", e);
+                }
+            });
 
             // La connexion à MySQL est async : on la lance en tâche de fond
             // et on remplit `AppState.db` une fois prête, sans bloquer le

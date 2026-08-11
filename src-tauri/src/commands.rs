@@ -174,7 +174,20 @@ pub async fn launch_game(
 
     let game_app = app.clone();
     let exit_app = app.clone();
+    let discord_rpc = state.discord_rpc.clone();
+    
+    // Passer le RPC à la tâche bloquante via Arc
+    let rpc_for_game = discord_rpc.clone();
+    
     tokio::task::spawn_blocking(move || {
+        // Notifier Discord que l'utilisateur est en jeu
+        let rpc_clone = rpc_for_game.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = rpc_clone.set_in_game().await {
+                eprintln!("Erreur Discord RPC set_in_game : {}", e);
+            }
+        });
+        
         crate::game::lancer_jeu_bloquant_avec_progress(
             Some(&discord_token),
             &username,
@@ -182,6 +195,14 @@ pub async fn launch_game(
                 emit_launch_progress(&game_app, phase, progress, label, detail);
             },
             move |_succes| {
+                // Notifier Discord que l'utilisateur est retourné au launcher
+                let rpc_exit = discord_rpc.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = rpc_exit.set_in_launcher().await {
+                        eprintln!("Erreur Discord RPC set_in_launcher : {}", e);
+                    }
+                });
+                
                 if let Err(error) = exit_app.emit("game-exited", ()) {
                     eprintln!("Impossible d'envoyer l'événement de fermeture du jeu : {error}");
                 }
@@ -234,15 +255,15 @@ pub async fn complete_discord_auth(state: State<'_, AppState>) -> Result<Discord
 #[tauri::command]
 pub async fn refresh_discord_token(state: State<'_, AppState>) -> Result<DiscordUser, String> {
     let discord_auth = state.discord_auth.clone();
-    
+
     let access_token = discord_auth
         .get_valid_access_token()
         .await?;
-    
+
     let user_info = discord_auth
         .get_user_info(&access_token)
         .await?;
-    
+
     Ok(DiscordUser {
         access_token: Some(access_token),
         ..user_info

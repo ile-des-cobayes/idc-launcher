@@ -40,4 +40,5 @@ sha2 = "0.10"
 walkdir = "2.5"
 tempfile = "3.10"
 keyring = "3.0"
+discord-rich-presence = "1.1.0"
 
