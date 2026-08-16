@@ -72,6 +72,10 @@ const newsDetailTitle = document.getElementById("news-detail-title");
 const newsDetailContent = document.getElementById("news-detail-content");
 const btnBackToNews = document.getElementById("btn-back-to-news");
 
+// Lien d'invitation vers le Discord officiel : réutilisé partout où on doit
+// rediriger un joueur non membre (login, création de compte, lancement).
+const DISCORD_INVITE_URL = "https://discord.gg/KMBNxjnvxH";
+
 let discordUserCourant = null;
 let usernameCourant = null;
 let skinModel = "default";
@@ -148,7 +152,7 @@ function mettreAJourProgressionLancement(update) {
   if (!launchProgress) return;
 
   const phase = update?.phase || "preparing";
-  
+
   // Le jeu tourne : la barre n'a plus d'utilité, on la masque directement
   // plutôt que de laisser un "100% / Minecraft est lancé" figé à l'écran.
   if (phase === "started") {
@@ -191,7 +195,7 @@ if (tauriEvent?.listen) {
   }).catch((error) => {
     console.warn("Écoute de la progression indisponible :", error);
   });
-  
+
   tauriEvent.listen("game-exited", () => {
     reinitialiserBoutonJouer();
   }).catch((error) => {
@@ -995,6 +999,25 @@ btnDiscord.addEventListener("click", async () => {
       discordId: discordUser.id,
     });
 
+    // L'appartenance au Discord officiel est requise pour jouer. Le message
+    // diffère selon que le compte existe déjà ou non, car les sanctions
+    // Discord (bannissement) s'appliquent aussi au serveur Minecraft :
+    // un compte existant peut donc se retrouver bloqué même après avoir
+    // déjà joué par le passé.
+    if (!discordUser.in_guild) {
+      statutAuth.textContent = "";
+      if (existingUser) {
+        afficherErreur(
+            `Tu dois être membre du Discord de L'île des Cobayes pour jouer. Rejoins-le ici : ${DISCORD_INVITE_URL} — les sanctions Discord (bannissements) s'appliquent aussi au serveur Minecraft.`
+        );
+      } else {
+        afficherErreur(
+            `Rejoins d'abord le Discord de L'île des Cobayes avant de créer ton compte : ${DISCORD_INVITE_URL}`
+        );
+      }
+      return;
+    }
+
     if (existingUser) {
       usernameCourant = existingUser.username;
       await definirProfil(existingUser.username);
@@ -1015,9 +1038,14 @@ btnValiderPseudo.addEventListener("click", async () => {
   if (!pseudo) return;
 
   try {
+    // discord_token est revérifié côté backend (create_user) avant la
+    // création du compte : ce n'est pas juste une commodité, c'est requis
+    // par la commande Tauri.
+    const discordToken = discordUserCourant?.accessToken || discordUserCourant?.access_token;
     const user = await invoke("create_user", {
       discordId: discordUserCourant.id,
       username: pseudo,
+      discordToken,
     });
     usernameCourant = user.username;
     await definirProfil(user.username);
@@ -1044,7 +1072,7 @@ btnJouer.addEventListener("click", async () => {
   try {
     // On récupère le token Discord depuis discordUserCourant
     let discordToken = discordUserCourant?.accessToken || discordUserCourant?.access_token;
-    
+
     // Si on a un token, on l'utilise directement
     // Sinon, on essaie de rafraîchir automatiquement via le backend
     if (!discordToken) {
@@ -1057,11 +1085,15 @@ btnJouer.addEventListener("click", async () => {
         throw new Error("Session expirée. Veuillez vous reconnecter.");
       }
     }
-    
+
     if (!discordToken) {
       throw new Error("Token Discord non disponible. Veuillez vous reconnecter.");
     }
-    
+
+    // launch_game revérifie l'appartenance au Discord côté backend avant de
+    // lancer quoi que ce soit (le joueur a pu quitter ou être banni depuis
+    // sa dernière connexion complète) — on ne s'appuie donc pas ici sur un
+    // éventuel discordUserCourant.in_guild potentiellement obsolète.
     await invoke("launch_game", { username: usernameCourant, discordToken: discordToken });
     mettreAJourProgressionLancement({
       phase: "started",

@@ -6,6 +6,11 @@ use crate::{database, AppState};
 use serde::Serialize;
 use tauri::{Emitter, Manager, State};
 
+/// URL d'invitation vers le Discord officiel de L'île des Cobayes, utilisée
+/// dans les messages d'erreur de vérification d'appartenance au serveur
+/// (voir create_user et launch_game ci-dessous).
+const DISCORD_INVITE_URL: &str = "https://discord.gg/KMBNxjnvxH";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LaunchProgress {
@@ -127,6 +132,24 @@ pub async fn launch_game(
                 .map_err(|_| "Token Discord expiré. Veuillez vous reconnecter.".to_string())?
         }
     };
+
+    // Le compte peut exister mais son propriétaire avoir quitté (ou été
+    // banni) du Discord depuis la création du compte, sans jamais repasser
+    // par l'écran de connexion (le token peut être rafraîchi silencieusement) :
+    // on revérifie donc l'appartenance au serveur à chaque lancement, pas
+    // seulement à la création du compte (voir create_user plus bas).
+    let in_guild = state
+        .discord_auth
+        .is_in_required_guild(&discord_token)
+        .await
+        .map_err(|e| format!("Impossible de vérifier ton appartenance au Discord : {e}"))?;
+
+    if !in_guild {
+        return Err(format!(
+            "Tu dois être membre du Discord de L'île des Cobayes pour jouer. Rejoins-le ici : {DISCORD_INVITE_URL} — les sanctions Discord (bannissements) s'appliquent aussi au serveur Minecraft."
+        ));
+    }
+
     let resource_manager = state.resource_manager.clone();
     emit_launch_progress(
         &app,
@@ -174,20 +197,7 @@ pub async fn launch_game(
 
     let game_app = app.clone();
     let exit_app = app.clone();
-    let discord_rpc = state.discord_rpc.clone();
-    
-    // Passer le RPC à la tâche bloquante via Arc
-    let rpc_for_game = discord_rpc.clone();
-    
     tokio::task::spawn_blocking(move || {
-        // Notifier Discord que l'utilisateur est en jeu
-        let rpc_clone = rpc_for_game.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = rpc_clone.set_in_game().await {
-                eprintln!("Erreur Discord RPC set_in_game : {}", e);
-            }
-        });
-        
         crate::game::lancer_jeu_bloquant_avec_progress(
             Some(&discord_token),
             &username,
@@ -195,14 +205,6 @@ pub async fn launch_game(
                 emit_launch_progress(&game_app, phase, progress, label, detail);
             },
             move |_succes| {
-                // Notifier Discord que l'utilisateur est retourné au launcher
-                let rpc_exit = discord_rpc.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = rpc_exit.set_in_launcher().await {
-                        eprintln!("Erreur Discord RPC set_in_launcher : {}", e);
-                    }
-                });
-                
                 if let Err(error) = exit_app.emit("game-exited", ()) {
                     eprintln!("Impossible d'envoyer l'événement de fermeture du jeu : {error}");
                 }
@@ -236,7 +238,8 @@ pub async fn start_discord_auth(state: State<'_, AppState>) -> Result<String, St
 /// 5 minutes). L'échange code -> token -> profil a déjà été fait par le
 /// serveur de callback lui-même (voir `callback_server.rs`) : un code
 /// d'autorisation Discord est à usage unique, donc on ne le refait pas
-/// ici, on récupère simplement le résultat déjà calculé.
+/// ici, on récupère simplement le résultat déjà calculé (y compris le
+/// flag `in_guild`, déjà vérifié à ce stade).
 #[tauri::command]
 pub async fn complete_discord_auth(state: State<'_, AppState>) -> Result<DiscordUser, String> {
     let result = state
@@ -260,9 +263,17 @@ pub async fn refresh_discord_token(state: State<'_, AppState>) -> Result<Discord
         .get_valid_access_token()
         .await?;
 
-    let user_info = discord_auth
+    let mut user_info = discord_auth
         .get_user_info(&access_token)
         .await?;
+
+    // Comme au login initial, on rafraîchit aussi l'appartenance au Discord
+    // ici : ce résultat est utilisé par le frontend, et launch_game revérifie
+    // de toute façon indépendamment côté backend avant de lancer le jeu.
+    user_info.in_guild = discord_auth
+        .is_in_required_guild(&access_token)
+        .await
+        .unwrap_or(false);
 
     Ok(DiscordUser {
         access_token: Some(access_token),
@@ -282,12 +293,31 @@ pub async fn get_user_by_discord_id(
     }
 }
 
+/// Crée le compte du joueur. Refusé si le joueur n'est pas membre du
+/// Discord officiel (voir DISCORD_INVITE_URL) : `discord_token` est
+/// revérifié ici plutôt que de faire confiance au flag `in_guild` déjà
+/// calculé côté frontend, pour ne jamais dépendre uniquement d'un état
+/// client potentiellement obsolète (le joueur a pu quitter le Discord
+/// entre le login et la validation de son pseudo).
 #[tauri::command]
 pub async fn create_user(
     discord_id: String,
     username: String,
+    discord_token: String,
     state: State<'_, AppState>,
 ) -> Result<User, String> {
+    let in_guild = state
+        .discord_auth
+        .is_in_required_guild(&discord_token)
+        .await
+        .map_err(|e| format!("Impossible de vérifier ton appartenance au Discord : {e}"))?;
+
+    if !in_guild {
+        return Err(format!(
+            "Tu dois d'abord rejoindre le Discord de L'île des Cobayes avant de créer ton compte : {DISCORD_INVITE_URL}"
+        ));
+    }
+
     let db_guard = state.db.lock().await;
     match db_guard.as_ref() {
         Some(db) => db.create_user(&discord_id, &username).await.map_err(|e| e.to_string()),

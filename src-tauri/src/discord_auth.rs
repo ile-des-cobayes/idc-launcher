@@ -10,6 +10,12 @@ use tokio::sync::Mutex;
 const KEYRING_SERVICE: &str = "idc-launcher";
 const KEYRING_USER: &str = "discord_refresh_token";
 
+/// Serveur Discord officiel de L'île des Cobayes. L'appartenance à ce
+/// serveur est requise pour créer un compte et pour jouer (voir
+/// is_in_required_guild ci-dessous, et son usage dans commands.rs).
+/// Injecté depuis le .env via build.rs, comme DISCORD_CLIENT_ID etc.
+const REQUIRED_GUILD_ID: &str = env!("REQUIRED_GUILD_ID");
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscordUser {
     pub id: String,
@@ -18,6 +24,11 @@ pub struct DiscordUser {
     pub avatar: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    // Rempli au moment du login (voir callback_server.rs) et re-vérifié à
+    // chaque lancement du jeu (voir launch_game dans commands.rs) : true si
+    // le joueur est membre du serveur Discord officiel.
+    #[serde(default)]
+    pub in_guild: bool,
 }
 
 /// Réponse complète de Discord OAuth2 (inclut access_token et refresh_token)
@@ -71,10 +82,14 @@ impl DiscordAuth {
         *self.pkce_verifier.lock().await = Some(pkce_verifier);
         *self.csrf_token.lock().await = Some(csrf_token.clone());
 
+        // Le scope "guilds" est indispensable pour pouvoir appeler
+        // /users/@me/guilds et vérifier l'appartenance au serveur Discord
+        // officiel (voir is_in_required_guild).
         let (auth_url, _csrf_token) = client
             .authorize_url(|| csrf_token.clone())
             .add_scope(oauth2::Scope::new("identify".to_string()))
             .add_scope(oauth2::Scope::new("email".to_string()))
+            .add_scope(oauth2::Scope::new("guilds".to_string()))
             .set_pkce_challenge(pkce_challenge)
             .url();
 
@@ -165,12 +180,12 @@ impl DiscordAuth {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            
+
             // Si le refresh token est invalide, on le supprime
             if status == reqwest::StatusCode::UNAUTHORIZED || error_text.contains("invalid_grant") {
                 self.clear_refresh_token()?;
             }
-            
+
             return Err(format!(
                 "Erreur lors du rafraîchissement du token Discord : HTTP {} - {}",
                 status, error_text
@@ -226,6 +241,39 @@ impl DiscordAuth {
             discriminator: user_data["discriminator"].as_str().unwrap_or("").to_string(),
             avatar: user_data["avatar"].as_str().map(|s| s.to_string()),
             access_token: None,
+            in_guild: false,
         })
+    }
+
+    /// Vérifie, via le scope OAuth "guilds", si le porteur de ce access_token
+    /// est membre du serveur Discord officiel de L'île des Cobayes
+    /// (REQUIRED_GUILD_ID). Utilisé au login (callback_server.rs) et à
+    /// chaque lancement du jeu (commands.rs::launch_game), car un joueur
+    /// peut avoir quitté ou été banni du serveur entre deux sessions sans
+    /// jamais repasser par l'écran de connexion (refresh token).
+    pub async fn is_in_required_guild(&self, access_token: &str) -> Result<bool, String> {
+        let client = reqwest::Client::new();
+        let response = client
+            .get("https://discord.com/api/users/@me/guilds")
+            .header("Authorization", format!("Bearer {}", access_token))
+            .send()
+            .await
+            .map_err(|e| format!("Impossible de vérifier l'appartenance au Discord : {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "Impossible de récupérer la liste des serveurs Discord : {}",
+                response.status()
+            ));
+        }
+
+        let guilds: Vec<serde_json::Value> = response
+            .json()
+            .await
+            .map_err(|e| format!("Impossible de lire la liste des serveurs Discord : {}", e))?;
+
+        Ok(guilds
+            .iter()
+            .any(|g| g["id"].as_str() == Some(REQUIRED_GUILD_ID)))
     }
 }

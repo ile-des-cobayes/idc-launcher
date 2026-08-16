@@ -61,8 +61,17 @@ impl CallbackServer {
                         rt_handle.block_on(async move {
                             let (access_token, _refresh_token) = discord_auth.exchange_code(&code).await?;
                             let user_info = discord_auth.get_user_info(&access_token).await?;
+                            // Défaut prudent : si la vérification échoue (souci
+                            // réseau côté Discord), on considère l'utilisateur
+                            // comme non membre plutôt que de le laisser passer
+                            // silencieusement.
+                            let in_guild = discord_auth
+                                .is_in_required_guild(&access_token)
+                                .await
+                                .unwrap_or(false);
                             Ok(DiscordUser {
                                 access_token: Some(access_token),
+                                in_guild,
                                 ..user_info
                             })
                         })
