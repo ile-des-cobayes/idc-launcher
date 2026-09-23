@@ -163,6 +163,18 @@
       </div>
     </div>
 
+    <!-- Modal Mods facultatifs -->
+    <div id="modal-optional-mods" class="modal cache">
+      <div class="modal-contenu">
+        <h2>Mods facultatifs</h2>
+        <p style="margin: 0 0 20px; color: var(--muted); font-size: 13px;">
+          Active ou désactive les mods disponibles pour personnaliser ton expérience de jeu.
+        </p>
+        <div id="optional-mods-liste" class="optional-mods-liste"></div>
+        <button id="btn-close-optional-mods" class="btn-fermer">Fermer</button>
+      </div>
+    </div>
+
     <div class="jeu-principal">
       <span id="texte-connecte" class="sr-only"></span>
       <!-- Conteneur des onglets (sans barre du haut) -->
@@ -176,12 +188,19 @@
                 <p class="jeu-eyebrow">Saison 01 — Serveur ouvert</p>
                 <h1 class="jeu-titre">L'ÎLE DES<br /><em>COBAYES</em></h1>
                 <p class="jeu-tagline">Une île, des aventures et une communauté prête à inventer la suite avec toi.</p>
-                <button id="btn-jouer" class="btn-principal btn-jouer">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  Jouer
-                </button>
+                <div class="jeu-actions">
+                  <button id="btn-jouer" class="btn-principal btn-jouer">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Jouer
+                  </button>
+                  <button id="btn-optional-mods" class="btn-icone-secondaire" title="Gérer les mods facultatifs">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="#ffffff">
+                      <path d="M7 6a4 4 0 100 8h10a4 4 0 000-8H7zm0 6a2 2 0 110-4 2 2 0 010 4zM7 16a4 4 0 100 8h10a4 4 0 000-8H7zm10 6a2 2 0 110-4 2 2 0 010 4z"/>
+                    </svg>
+                  </button>
+                </div>
                 <section id="launch-progress" class="launch-progress cache" aria-live="polite" aria-atomic="true">
                   <div class="launch-progress-heading">
                     <span id="launch-progress-label" class="launch-progress-label">Préparation du launcher</span>

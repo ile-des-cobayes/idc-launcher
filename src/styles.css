@@ -18,6 +18,10 @@
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* ==========================================================================
+   Mods facultatifs
+   ========================================================================== */
+
 
 * { box-sizing: border-box; }
 html, body, #app { width: 100%; height: 100%; margin: 0; }
@@ -204,3 +208,82 @@ input::placeholder { color: #708875; } input:focus { border-color: var(--line-br
 .news-detail-content table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 1.3em 0; }
 .news-detail-content th,
 .news-detail-content td { padding: 8px 10px; border: 1px solid var(--line); text-align: left; }
+
+/* Boutons actions */
+.jeu-actions { display: flex; gap: 14px; align-items: center; }
+
+/* Bouton icône secondaire (type engrenage) */
+.btn-icone-secondaire {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: .16s;
+}
+.btn-icone-secondaire:hover {
+  border-color: var(--line-bright);
+  box-shadow: 0 0 0 4px rgba(127, 207, 92, .11);
+}
+.btn-icone-secondaire:active {
+  transform: translateY(1px);
+}
+.btn-icone-secondaire svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Liste des mods facultatifs */
+.optional-mods-liste {
+  display: grid;
+  gap: 12px;
+}
+
+.optional-mod-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(11, 26, 16, .78);
+  transition: .18s;
+}
+
+.optional-mod-item:hover {
+  border-color: var(--line-bright);
+  transform: translateX(4px);
+}
+
+.optional-mod-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+
+.optional-mod-item label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.optional-mod-item .mod-name {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.optional-mod-item .mod-description {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}

@@ -31,6 +31,7 @@ pub struct CapeShopItem {
     pub owned: bool,
     pub selected: bool,
     pub texture_url: String,
+    pub cover_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -105,6 +106,7 @@ impl Database {
                 purchasable TINYINT(1) NOT NULL DEFAULT 1,
                 enabled TINYINT(1) NOT NULL DEFAULT 1,
                 texture_filename VARCHAR(180) NOT NULL,
+                cover_filename VARCHAR(180) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
@@ -151,6 +153,21 @@ impl Database {
                 reference_id VARCHAR(80) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX wallet_transactions_user_idx (discord_id, created_at)
+            )
+            "#,
+        )
+            .execute(&self.pool)
+            .await?;
+
+        // Table pour les états des mods facultatifs par joueur
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS player_optional_mods (
+                discord_id VARCHAR(255) NOT NULL,
+                mod_id VARCHAR(120) NOT NULL,
+                enabled TINYINT(1) NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (discord_id, mod_id)
             )
             "#,
         )
@@ -229,6 +246,7 @@ impl Database {
         &self,
         discord_id: &str,
         skin_api_url: &str,
+        cape_cover_base_url: &str,
     ) -> Result<CapeShopProfile, String> {
         sqlx::query("INSERT IGNORE INTO wallets (discord_id, balance) VALUES (?, 0)")
             .bind(discord_id)
@@ -259,6 +277,7 @@ impl Database {
                 c.price,
                 c.purchasable,
                 c.texture_filename,
+                c.cover_filename,
                 CASE WHEN uc.discord_id IS NULL THEN 0 ELSE 1 END AS owned
             FROM capes c
             LEFT JOIN user_capes uc
@@ -273,11 +292,14 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        let base = skin_api_url.trim_end_matches('/');
+        let skin_base = skin_api_url.trim_end_matches('/');
+        let cover_base = cape_cover_base_url.trim_end_matches('/');
         let mut capes = Vec::with_capacity(rows.len());
         for row in rows {
             let id: String = row.try_get("id").map_err(|e| e.to_string())?;
             let texture_filename: String = row.try_get("texture_filename").map_err(|e| e.to_string())?;
+            let cover_filename: Option<String> = row.try_get("cover_filename").map_err(|e| e.to_string())?;
+            let cover_url = cover_filename.map(|filename| format!("{cover_base}/{filename}"));
             capes.push(CapeShopItem {
                 selected: selected_cape_id.as_deref() == Some(id.as_str()),
                 id,
@@ -286,7 +308,8 @@ impl Database {
                 price: row.try_get("price").map_err(|e| e.to_string())?,
                 purchasable: row.try_get::<i8, _>("purchasable").map_err(|e| e.to_string())? == 1,
                 owned: row.try_get::<i8, _>("owned").map_err(|e| e.to_string())? == 1,
-                texture_url: format!("{base}/textures/{texture_filename}"),
+                texture_url: format!("{skin_base}/textures/capes/{texture_filename}"),
+                cover_url,
             });
         }
 
@@ -305,6 +328,7 @@ impl Database {
         discord_id: &str,
         cape_id: &str,
         skin_api_url: &str,
+        cape_cover_base_url: &str,
     ) -> Result<CapeShopProfile, String> {
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
 
@@ -404,7 +428,7 @@ impl Database {
             .map_err(|e| e.to_string())?;
 
         tx.commit().await.map_err(|e| e.to_string())?;
-        self.get_cape_shop_profile(discord_id, skin_api_url).await
+        self.get_cape_shop_profile(discord_id, skin_api_url, cape_cover_base_url).await
     }
 
     pub async fn select_cape(
@@ -412,6 +436,7 @@ impl Database {
         discord_id: &str,
         cape_id: Option<&str>,
         skin_api_url: &str,
+        cape_cover_base_url: &str,
     ) -> Result<CapeShopProfile, String> {
         if let Some(cape_id) = cape_id {
             let can_select = sqlx::query(
@@ -454,6 +479,53 @@ impl Database {
                 .map_err(|e| e.to_string())?;
         }
 
-        self.get_cape_shop_profile(discord_id, skin_api_url).await
+        self.get_cape_shop_profile(discord_id, skin_api_url, cape_cover_base_url).await
+    }
+
+    /// Récupère les états activé/désactivé des mods facultatifs pour un joueur.
+    /// Retourne une HashMap mod_id -> enabled.
+    pub async fn get_optional_mod_states(
+        &self,
+        discord_id: &str,
+    ) -> Result<std::collections::HashMap<String, bool>, sqlx::Error> {
+        use std::collections::HashMap;
+
+        let rows = sqlx::query(
+            "SELECT mod_id, enabled FROM player_optional_mods WHERE discord_id = ?",
+        )
+        .bind(discord_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut states = HashMap::new();
+        for row in rows {
+            let mod_id: String = row.try_get("mod_id")?;
+            let enabled: i8 = row.try_get("enabled")?;
+            states.insert(mod_id, enabled == 1);
+        }
+
+        Ok(states)
+    }
+
+    /// Met à jour l'état activé/désactivé d'un mod facultatif pour un joueur.
+    pub async fn set_optional_mod_enabled(
+        &self,
+        discord_id: &str,
+        mod_id: &str,
+        enabled: bool,
+    ) -> Result<(), sqlx::Error> {
+        let enabled_int = if enabled { 1 } else { 0 };
+
+        sqlx::query(
+            "INSERT INTO player_optional_mods (discord_id, mod_id, enabled) VALUES (?, ?, ?) 
+             ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)",
+        )
+        .bind(discord_id)
+        .bind(mod_id)
+        .bind(enabled_int)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }

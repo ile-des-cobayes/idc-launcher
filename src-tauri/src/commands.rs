@@ -4,6 +4,7 @@ use crate::news::NewsItem;
 use crate::resources::{ResourceManager, SyncResult, FileInfo};
 use crate::{database, AppState};
 use serde::Serialize;
+use std::collections::HashSet;
 use tauri::{Emitter, Manager, State};
 
 /// URL d'invitation vers le Discord officiel de L'île des Cobayes, utilisée
@@ -117,6 +118,7 @@ pub fn set_launcher_window_mode(mode: String, app: tauri::AppHandle) -> Result<(
 pub async fn launch_game(
     username: String,
     discord_token: Option<String>,
+    discord_id: String,
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -193,6 +195,76 @@ pub async fn launch_game(
         64,
         "Installation synchronisée",
         sync_detail,
+    );
+
+    // Synchronisation des mods facultatifs
+    emit_launch_progress(
+        &app,
+        "optional_mods",
+        72,
+        "Synchronisation des mods facultatifs",
+        "Vérification de tes mods personnalisés",
+    );
+
+    // Récupérer les métadonnées des mods facultatifs
+    let optional_mods_meta = crate::optional_mods::fetch_optional_mods_meta()
+        .await
+        .map_err(|e| format!("Impossible de récupérer les mods facultatifs : {}", e))?;
+
+    // Déterminer quels mods sont activés pour ce joueur
+    let db_guard = state.db.lock().await;
+    let player_states = match db_guard.as_ref() {
+        Some(db) => db
+            .get_optional_mod_states(&discord_id)
+            .await
+            .map_err(|e| format!("Erreur base de données : {}", e))?,
+        None => return Err("Base de données non connectée".to_string()),
+    };
+
+    // Construire la liste des IDs de mods activés
+    let mut enabled_ids = HashSet::new();
+    for meta in &optional_mods_meta {
+        // Utiliser l'état personnalisé du joueur, ou la valeur par défaut si jamais touché
+        let enabled = player_states
+            .get(&meta.id)
+            .copied()
+            .unwrap_or(meta.enabled_by_default);
+        if enabled {
+            enabled_ids.insert(meta.id.clone());
+        }
+    }
+
+    // Synchroniser les mods facultatifs
+    let game_dir = ResourceManager::get_game_dir()?;
+    let optional_sync_result = resource_manager
+        .sync_optional_mods(&optional_mods_meta, &enabled_ids, &game_dir)
+        .await
+        .map_err(|error| format!("Erreur de synchronisation des mods facultatifs : {}", error))?;
+
+    if !optional_sync_result.errors.is_empty() {
+        let (path, error) = &optional_sync_result.errors[0];
+        return Err(format!(
+            "Synchronisation des mods facultatifs incomplète ({} erreur(s)) : {} — {}",
+            optional_sync_result.errors.len(),
+            path.display(),
+            error
+        ));
+    }
+
+    let optional_changed = optional_sync_result.downloaded.len() 
+        + optional_sync_result.updated.len() 
+        + optional_sync_result.deleted.len();
+    let optional_detail = if optional_changed == 0 {
+        "Tes mods facultatifs sont à jour.".to_string()
+    } else {
+        format!("{optional_changed} fichier(s) de mods facultatifs mis à jour.")
+    };
+    emit_launch_progress(
+        &app,
+        "optional_mods",
+        78,
+        "Mods facultatifs synchronisés",
+        optional_detail,
     );
 
     let game_app = app.clone();
@@ -391,14 +463,11 @@ pub async fn get_game_directory() -> Result<String, String> {
 // qu'un fallback silencieux vers localhost en prod.
 const SKIN_API_URL: &str = env!("SKIN_API_URL");
 
-/// Base des covers de capes, servies par le panneau admin (même logique que
-/// news_covers/ pour les news, voir index.php). Fichier attendu :
-/// {CAPE_COVERS_URL}/{cape_id}_cover.png
-///
+/// Base des covers de capes, servies par le panneau admin.
 /// Contrairement à SKIN_API_URL, ce n'est pas embarqué via env!() car ce
 /// n'est pas une donnée sensible ni amenée à changer par déploiement : c'est
 /// une URL publique fixe du panneau admin.
-const CAPE_COVERS_URL: &str = "https://idcadmin.ouepamal.fr/cape_covers";
+const CAPE_COVER_BASE_URL: &str = "https://admin.ile-des-cobayes.fr/cape_covers";
 
 
 #[derive(Serialize)]
@@ -410,7 +479,7 @@ pub struct LauncherCape {
     price: u64,
     purchasable: bool,
     texture_url: String,
-    cover_url: String,
+    cover_url: Option<String>,
     owned: bool,
     selected: bool,
 }
@@ -431,7 +500,6 @@ fn cosmetics_response(profile: database::CapeShopProfile) -> CosmeticsResponse {
             .capes
             .into_iter()
             .map(|cape| {
-                let cover_url = format!("{}/{}_cover.png", CAPE_COVERS_URL, cape.id);
                 LauncherCape {
                     id: cape.id,
                     name: cape.name,
@@ -439,7 +507,7 @@ fn cosmetics_response(profile: database::CapeShopProfile) -> CosmeticsResponse {
                     price: cape.price,
                     purchasable: cape.purchasable,
                     texture_url: cape.texture_url,
-                    cover_url,
+                    cover_url: cape.cover_url,
                     owned: cape.owned,
                     selected: cape.selected,
                 }
@@ -458,7 +526,7 @@ pub async fn get_cape_shop(
 
     match db_guard.as_ref() {
         Some(db) => db
-            .get_cape_shop_profile(&discord_id, SKIN_API_URL)
+            .get_cape_shop_profile(&discord_id, SKIN_API_URL, CAPE_COVER_BASE_URL)
             .await
             .map(cosmetics_response),
         None => Err("Base de données non connectée".to_string()),
@@ -477,7 +545,7 @@ pub async fn purchase_cape(
 
     match db_guard.as_ref() {
         Some(db) => db
-            .purchase_cape(&discord_id, &cape_id, SKIN_API_URL)
+            .purchase_cape(&discord_id, &cape_id, SKIN_API_URL, CAPE_COVER_BASE_URL)
             .await
             .map(cosmetics_response),
         None => Err("Base de données non connectée".to_string()),
@@ -496,7 +564,7 @@ pub async fn select_cape(
 
     match db_guard.as_ref() {
         Some(db) => db
-            .select_cape(&discord_id, cape_id.as_deref(), SKIN_API_URL)
+            .select_cape(&discord_id, cape_id.as_deref(), SKIN_API_URL, CAPE_COVER_BASE_URL)
             .await
             .map(cosmetics_response),
         None => Err("Base de données non connectée".to_string()),
@@ -640,4 +708,78 @@ pub async fn update_skin_model(
 #[tauri::command]
 pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
     crate::news::fetch_news().await
+}
+
+// ============================================================================
+// Mods facultatifs
+// ============================================================================
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionalModView {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+}
+
+/// Récupère la liste des mods facultatifs avec leur état (activé/désactivé) pour le joueur.
+/// L'état par défaut (enabled_by_default) est utilisé si le joueur n'a jamais explicitement
+/// changé l'état du mod.
+#[tauri::command]
+pub async fn get_optional_mods(
+    discord_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<OptionalModView>, String> {
+    // Récupérer les métadonnées des mods depuis l'API
+    let mods_meta = crate::optional_mods::fetch_optional_mods_meta()
+        .await
+        .map_err(|e| format!("Impossible de récupérer les mods facultatifs : {}", e))?;
+
+    // Récupérer les états personnalisés du joueur depuis la base de données
+    let db_guard = state.db.lock().await;
+    let player_states = match db_guard.as_ref() {
+        Some(db) => db
+            .get_optional_mod_states(&discord_id)
+            .await
+            .map_err(|e| format!("Erreur base de données : {}", e))?,
+        None => return Err("Base de données non connectée".to_string()),
+    };
+
+    // Construire la réponse en croisant métadonnées et états joueur
+    let mut result = Vec::new();
+    for meta in mods_meta {
+        // Vérifier si le joueur a un état personnalisé pour ce mod
+        let enabled = player_states
+            .get(&meta.id)
+            .copied()
+            .unwrap_or(meta.enabled_by_default);
+
+        result.push(OptionalModView {
+            id: meta.id,
+            name: meta.name,
+            description: meta.description,
+            enabled,
+        });
+    }
+
+    Ok(result)
+}
+
+/// Met à jour l'état activé/désactivé d'un mod facultatif pour le joueur.
+#[tauri::command]
+pub async fn set_optional_mod_enabled(
+    discord_id: String,
+    mod_id: String,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db_guard = state.db.lock().await;
+    match db_guard.as_ref() {
+        Some(db) => db
+            .set_optional_mod_enabled(&discord_id, &mod_id, enabled)
+            .await
+            .map_err(|e| format!("Erreur base de données : {}", e)),
+        None => Err("Base de données non connectée".to_string()),
+    }
 }

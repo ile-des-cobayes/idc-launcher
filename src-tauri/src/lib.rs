@@ -5,6 +5,7 @@ mod game;
 mod commands;
 mod resources;
 mod news;
+mod optional_mods;
 mod discord_rpc;
 
 use database::Database;
@@ -136,6 +137,8 @@ pub fn run() {
             commands::purchase_cape,
             commands::select_cape,
             commands::fetch_news,
+            commands::get_optional_mods,
+            commands::set_optional_mod_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

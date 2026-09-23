@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 use std::fs::{self, File};
 use std::io::{Write, Read};
 use sha2::{Sha256, Digest};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use serde::{Serialize, Deserialize};
+
+use crate::optional_mods::OptionalModMeta;
 
 /// Configuration des URLs du serveur de ressources
 pub struct ResourceConfig {
@@ -518,6 +520,157 @@ impl ResourceManager {
         let base_exists = base_files.keys().any(|path| game_dir.join(path).exists());
 
         Ok(all_updated && base_exists)
+    }
+
+    /// Synchronise les mods facultatifs activés par le joueur.
+    ///
+    /// - Télécharge/répare les fichiers des mods ACTIVÉS (vérification hash + taille comme pour updates/)
+    /// - Supprime les fichiers appartenant à un mod DÉSACTIVÉ (ou supprimé côté admin) qui traînent encore sur le disque
+    /// - Supprime tout fichier présent dans un dossier "géré" (mods/, config/, etc. — déduit des chemins déclarés dans
+    ///   TOUS les manifests de mods facultatifs connus) qui n'est déclaré ni par base, ni par updates, ni par un mod
+    ///   facultatif activé — donc tout ajout manuel non autorisé.
+    ///
+    /// Ne JAMAIS toucher un fichier hors des dossiers gérés par au moins un manifest (jamais saves/, screenshots/,
+    /// options.txt, etc.) — même logique de prudence que le code existant dans managed_root_dirs().
+    pub async fn sync_optional_mods(
+        &self,
+        optional_mods: &[OptionalModMeta],
+        enabled_ids: &HashSet<String>,
+        local_base: &Path,
+    ) -> Result<SyncResult, String> {
+        let mut result = SyncResult::new();
+
+        // Collecter tous les manifests des mods facultatifs et les dossiers racines gérés
+        let mut all_mods_root_dirs: HashSet<String> = HashSet::new();
+        let mut mod_manifests: HashMap<String, HashMap<String, FileInfo>> = HashMap::new();
+
+        // 1. Charger tous les manifests des mods facultatifs
+        for mod_meta in optional_mods {
+            let manifest = self.fetch_remote_files(&mod_meta.server_path).await?;
+            mod_manifests.insert(mod_meta.id.clone(), manifest);
+        }
+
+        // 2. Collecter les dossiers racines gérés par tous les mods
+        for (_mod_id, manifest) in &mod_manifests {
+            let mod_root_dirs = Self::managed_root_dirs(manifest);
+            all_mods_root_dirs.extend(mod_root_dirs);
+        }
+
+        // 3. Récupérer les fichiers des manifests base et updates pour éviter de supprimer ceux-là
+        let base_files = self.fetch_remote_files(&self.config.server_base_path).await?;
+        let updates_files = self.fetch_remote_files(&self.config.server_updates_path).await?;
+
+        // 4. Synchroniser chaque mod activé
+        for mod_meta in optional_mods {
+            if !enabled_ids.contains(&mod_meta.id) {
+                continue; // On ne sync que les mods activés
+            }
+
+            if let Some(_manifest) = mod_manifests.get(&mod_meta.id) {
+                // Pour ce mod, télécharger/réparer les fichiers manquants ou modifiés
+                let status = self.compare_files(&mod_meta.server_path, local_base, true, false).await?;
+
+                for (relative_path, sync_status) in &status {
+                    match sync_status {
+                        SyncStatus::Missing | SyncStatus::Modified => {
+                            match self.download_file(&mod_meta.server_path, local_base, relative_path).await {
+                                Ok(_) => {
+                                    if *sync_status == SyncStatus::Missing {
+                                        result.downloaded.push(PathBuf::from(relative_path));
+                                    } else {
+                                        result.updated.push(PathBuf::from(relative_path));
+                                    }
+                                }
+                                Err(e) => {
+                                    result.errors.push((PathBuf::from(relative_path), e));
+                                }
+                            }
+                        }
+                        SyncStatus::UpToDate => {}
+                        SyncStatus::Extra => {
+                            // On ne supprime PAS les fichiers "extra" dans compare_files pour un mod activé,
+                            // car ils peuvent appartenir à d'autres mods activés.
+                            // La suppression des fichiers non autorisés est gérée globalement plus bas.
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Supprimer les fichiers appartenant à des mods DÉSACTIVÉS
+        for mod_meta in optional_mods {
+            if enabled_ids.contains(&mod_meta.id) {
+                continue; // On garde les fichiers des mods activés
+            }
+
+            if let Some(manifest) = mod_manifests.get(&mod_meta.id) {
+                for (relative_path, _) in manifest {
+                    let local_path = local_base.join(relative_path);
+                    if local_path.exists() {
+                        match Self::delete_local_file(local_base, relative_path, &mod_meta.server_path) {
+                            Ok(_) => {
+                                result.deleted.push(PathBuf::from(relative_path));
+                            }
+                            Err(e) => {
+                                result.errors.push((PathBuf::from(relative_path), e));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Supprimer tout fichier présent dans les dossiers gérés qui n'est pas déclaré
+        // par base, updates, ou un mod facultatif activé
+        // Les dossiers gérés = tous les dossiers racines mentionnés dans TOUS les manifests (base + updates + mods facultatifs)
+        let mut all_managed_root_dirs = Self::managed_root_dirs(&base_files);
+        let updates_root_dirs = Self::managed_root_dirs(&updates_files);
+        all_managed_root_dirs.extend(updates_root_dirs);
+        all_managed_root_dirs.extend(all_mods_root_dirs.clone());
+
+        // Collecter tous les fichiers autorisés (base + updates + mods activés)
+        let mut all_allowed_files: HashSet<String> = HashSet::new();
+        for (path, _) in &base_files {
+            all_allowed_files.insert(path.clone());
+        }
+        for (path, _) in &updates_files {
+            all_allowed_files.insert(path.clone());
+        }
+        for mod_meta in optional_mods {
+            if enabled_ids.contains(&mod_meta.id) {
+                if let Some(manifest) = mod_manifests.get(&mod_meta.id) {
+                    for (path, _) in manifest {
+                        all_allowed_files.insert(path.clone());
+                    }
+                }
+            }
+        }
+
+        // Scanner chaque dossier racine géré et supprimer les fichiers non déclarés
+        for root in all_managed_root_dirs {
+            let root_path = local_base.join(&root);
+            if !root_path.exists() {
+                continue;
+            }
+
+            let local_files = Self::scan_local_dir(&root_path, local_base)?;
+
+            for (local_path, _) in &local_files {
+                // Si ce fichier n'est pas dans les fichiers autorisés, on le supprime
+                if !all_allowed_files.contains(local_path) {
+                    match Self::delete_local_file(local_base, local_path, "") {
+                        Ok(_) => {
+                            result.deleted.push(PathBuf::from(local_path));
+                        }
+                        Err(e) => {
+                            result.errors.push((PathBuf::from(local_path), e));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 

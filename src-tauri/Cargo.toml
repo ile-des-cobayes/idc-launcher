@@ -1,6 +1,6 @@
 [package]
 name = "idc-launcher"
-version = "0.2.5"
+version = "0.2.8"
 description = "Launcher of L'Île des Cobayes"
 authors = ["Bowsy"]
 edition = "2021"

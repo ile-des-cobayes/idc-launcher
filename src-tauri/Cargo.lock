@@ -2437,7 +2437,7 @@ dependencies = [
 
 [[package]]
 name = "idc-launcher"
-version = "0.2.5"
+version = "0.2.8"
 dependencies = [
  "chrono",
  "dirs",

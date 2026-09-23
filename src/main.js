@@ -32,6 +32,12 @@ const skinStatus = document.getElementById("skin-status");
 const modelSteve = document.getElementById("model-steve");
 const modelAlex = document.getElementById("model-alex");
 
+// Gestion des mods facultatifs
+const btnOptionalMods = document.getElementById("btn-optional-mods");
+const modalOptionalMods = document.getElementById("modal-optional-mods");
+const optionalModsListeEl = document.getElementById("optional-mods-liste");
+const btnCloseOptionalMods = document.getElementById("btn-close-optional-mods");
+
 // Gestion des news / notifications
 const btnNavNews = document.getElementById("btn-nav-news");
 const btnNavAccueil = document.getElementById("btn-nav-accueil");
@@ -268,8 +274,8 @@ async function updateAvatarDisplay() {
     // libre dans le launcher. On part exclusivement du skin associé à l'ID
     // Discord par l'API IDC, puis on en extrait la tête localement.
     const skinUrl = hasCustomSkin
-        ? `https://ouepamal.fr/skin-api/textures/skins/${discordUserCourant.id}.png`
-        : "https://ouepamal.fr/skin-api/textures/skins/default.png";
+        ? `https://auth.ile-des-cobayes.fr/textures/skins/${discordUserCourant.id}.png`
+        : "https://auth.ile-des-cobayes.fr/textures/skins/default.png";
     const headDataUrl = await extractHeadFromSkin(skinUrl);
 
     avatarSkin.onerror = () => {
@@ -344,8 +350,8 @@ async function updateSkinModelInDB() {
 async function loadSkinPreview() {
   if (!discordUserCourant || !discordUserCourant.id) return;
 
-  const skinUrl = `https://ouepamal.fr/skin-api/textures/skins/${discordUserCourant.id}.png`;
-  const defaultSkinUrl = `https://ouepamal.fr/skin-api/textures/skins/default.png`;
+  const skinUrl = `https://auth.ile-des-cobayes.fr/textures/skins/${discordUserCourant.id}.png`;
+  const defaultSkinUrl = `https://auth.ile-des-cobayes.fr/textures/skins/default.png`;
 
   try {
     const hasCustomSkin = await invoke("has_custom_skin", {
@@ -556,10 +562,12 @@ function rendreBoutiqueCapes(profile) {
 
     // On affiche la cover de présentation de la cape (générée côté panneau
     // admin), pas la texture brute utilisée en jeu par le mod de skins.
+    // Fallback sur textureUrl si coverUrl est null/undefined
+    const coverUrl = cape.coverUrl ?? cape.textureUrl;
     card.innerHTML = `
       <div class="cape-card-art">
         <span class="cape-card-glow" aria-hidden="true"></span>
-        <img src="${echapperHtml(cape.coverUrl)}" alt="Aperçu de la cape ${echapperHtml(cape.name)}" />
+        <img src="${echapperHtml(coverUrl)}" alt="Aperçu de la cape ${echapperHtml(cape.name)}" />
         ${cape.selected ? '<span class="cape-card-badge">Active</span>' : ""}
         ${cape.owned && !cape.selected ? '<span class="cape-card-badge cape-card-badge--owned">Possédée</span>' : ""}
         ${locked ? '<span class="cape-card-badge cape-card-badge--locked">Non achetable</span>' : ""}
@@ -625,6 +633,108 @@ function echapperHtml(texte) {
   div.textContent = texte ?? "";
   return div.innerHTML;
 }
+
+// ============================================================================
+// Mods facultatifs
+// ============================================================================
+
+/// Charge et affiche la liste des mods facultatifs pour le joueur
+async function chargerModsFacultatifs() {
+  if (!discordUserCourant || !discordUserCourant.id) {
+    console.warn("Impossible de charger les mods facultatifs : utilisateur non connecté");
+    return;
+  }
+
+  try {
+    const response = await invoke("get_optional_mods", {
+      discordId: discordUserCourant.id
+    });
+
+    if (!response || !Array.isArray(response)) {
+      console.warn("Réponse inattendue pour les mods facultatifs :", response);
+      return;
+    }
+
+    // Vider la liste
+    optionalModsListeEl.innerHTML = "";
+
+    // Créer un élément pour chaque mod
+    for (const mod of response) {
+      const item = document.createElement("div");
+      item.className = "optional-mod-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = `mod-${mod.id}`;
+      checkbox.checked = mod.enabled;
+      checkbox.dataset.modId = mod.id;
+
+      const label = document.createElement("label");
+      label.htmlFor = `mod-${mod.id}`;
+
+      const name = document.createElement("span");
+      name.className = "mod-name";
+      name.textContent = echapperHtml(mod.name);
+
+      const description = document.createElement("span");
+      description.className = "mod-description";
+      description.textContent = echapperHtml(mod.description);
+
+      label.appendChild(name);
+      label.appendChild(description);
+
+      item.appendChild(checkbox);
+      item.appendChild(label);
+
+      optionalModsListeEl.appendChild(item);
+    }
+
+    // Ajouter l'écouteur pour les changements de checkbox
+    optionalModsListeEl.addEventListener("change", handleOptionalModToggle);
+
+  } catch (e) {
+    console.error("Erreur lors du chargement des mods facultatifs :", e);
+    // Afficher un message d'erreur dans la modal
+    optionalModsListeEl.innerHTML = `
+      <p style="color: var(--danger); margin: 0; font-size: 13px;">
+        Impossible de charger les mods facultatifs : ${echapperHtml(e + "")}
+      </p>
+    `;
+  }
+}
+
+/// Gère le basculement d'un mod facultatif
+async function handleOptionalModToggle(event) {
+  const checkbox = event.target.closest("input[type='checkbox']");
+  if (!checkbox || !checkbox.dataset.modId) return;
+
+  const modId = checkbox.dataset.modId;
+  const enabled = checkbox.checked;
+  const discordId = discordUserCourant?.id;
+
+  if (!discordId) {
+    console.warn("Utilisateur non connecté, impossible de mettre à jour le mod facultatif");
+    checkbox.checked = !checkbox.checked; // Rollback
+    return;
+  }
+
+  try {
+    await invoke("set_optional_mod_enabled", {
+      discordId: discordId,
+      modId: modId,
+      enabled: enabled
+    });
+
+    // Si ça a réussi, on ne fait rien de plus (le state est déjà mis à jour côté backend)
+  } catch (e) {
+    console.error("Erreur lors de la mise à jour du mod facultatif :", e);
+    // Rollback visuel
+    checkbox.checked = !checkbox.checked;
+    alert(`Erreur : ${e}`);
+  }
+}
+
+// ============================================================================
 
 function formaterDateNews(iso) {
   if (!iso) return "";
@@ -1094,7 +1204,7 @@ btnJouer.addEventListener("click", async () => {
     // lancer quoi que ce soit (le joueur a pu quitter ou être banni depuis
     // sa dernière connexion complète) — on ne s'appuie donc pas ici sur un
     // éventuel discordUserCourant.in_guild potentiellement obsolète.
-    await invoke("launch_game", { username: usernameCourant, discordToken: discordToken });
+    await invoke("launch_game", { username: usernameCourant, discordToken: discordToken, discordId: discordUserCourant.id });
     mettreAJourProgressionLancement({
       phase: "started",
       progress: 100,
@@ -1132,6 +1242,26 @@ btnJouer.addEventListener("click", async () => {
 if (btnProfil) btnProfil.addEventListener("click", openSkinModal);
 if (btnCloseModal) btnCloseModal.addEventListener("click", closeSkinModal);
 if (btnDeleteSkin) btnDeleteSkin.addEventListener("click", deleteCustomSkin);
+
+// Ecouteurs d'événements pour les mods facultatifs
+if (btnOptionalMods) {
+  btnOptionalMods.addEventListener("click", () => {
+    modalOptionalMods.classList.remove("cache");
+    chargerModsFacultatifs();
+  });
+}
+if (btnCloseOptionalMods) {
+  btnCloseOptionalMods.addEventListener("click", () => {
+    modalOptionalMods.classList.add("cache");
+  });
+}
+if (modalOptionalMods) {
+  modalOptionalMods.addEventListener("click", (e) => {
+    if (e.target === modalOptionalMods) {
+      modalOptionalMods.classList.add("cache");
+    }
+  });
+}
 
 // Gestion du changement de modèle
 if (modelSteve && modelAlex) {

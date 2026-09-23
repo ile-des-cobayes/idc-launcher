@@ -121,7 +121,7 @@ async fn authentifier_avec_api_yggdrasil(discord_token: &str) -> Result<SessionY
         .map_err(|e| format!("Impossible de créer le client HTTP : {}", e))?;
     
     let response = client
-        .post(format!("{}/authserver/authenticate", auth_api_base_with_slash()))
+        .post(format!("{}authserver/authenticate", auth_api_base_with_slash()))
         .json(&serde_json::json!({
             "accessToken": discord_token
         }))
@@ -240,11 +240,11 @@ where
         "Installation de NeoForge",
         "Préparation des bibliothèques et du profil de jeu",
     );
-    let mut installer = forge::Installer::new(Loader::NeoForge, ForgeVersion::Name("21.1.248".to_string()));
+    let mut installer = forge::Installer::new(Loader::NeoForge, ForgeVersion::Name("26.2.0.75".to_string()));
     
     {
         let mojang = installer.mojang_mut();
-        mojang.set_version("1.21.1");
+        mojang.set_version("26.0.2");
         // Identité temporaire, juste pour que portablemc génère une commande valide.
         // Elle sera écrasée juste après par la vraie identité Yggdrasil.
         mojang.set_auth_offline_username(pseudo);
