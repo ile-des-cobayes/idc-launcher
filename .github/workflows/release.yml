@@ -74,15 +74,19 @@ jobs:
         shell: bash
         run: printf '%s\n' "${{ secrets.SRC_TAURI_ENV_FILE }}" > src-tauri/.env
 
+      - name: Écrire la clé de signature dans un fichier
+        # Passer la clé comme CHEMIN DE FICHIER plutôt que comme variable
+        # d'env multi-lignes évite un bug de troncature côté build AppImage
+        # sur Linux (le contenu passe par des sous-scripts bash internes qui
+        # peuvent mal ré-exporter une valeur multi-lignes).
+        shell: bash
+        run: printf '%s\n' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > "${{ runner.temp }}/idc-launcher.key"
+
       - name: Build & bundle Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Clé privée + mot de passe générés via `npm run tauri signer generate`.
-          # Nécessaires pour signer les artefacts d'update (voir tauri.conf.json
-          # -> plugins.updater.pubkey pour la clé publique correspondante).
-          # Ajoute-les dans Settings > Secrets and variables > Actions de ce repo.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.temp }}/idc-launcher.key
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: app-v__VERSION__
