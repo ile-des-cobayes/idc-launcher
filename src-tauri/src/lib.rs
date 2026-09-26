@@ -66,6 +66,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Auto-update : expose les commandes JS `check()` / `downloadAndInstall()`
+        // au frontend (voir main.js). Configuré via tauri.conf.json (endpoints +
+        // clé publique de vérification de signature).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Nécessaire pour relancer le launcher (`relaunch()`) une fois la mise
+        // à jour installée.
+        .plugin(tauri_plugin_process::init())
         .manage(AppState {
             db: Mutex::new(None),
             discord_auth: Arc::new(DiscordAuth::new()),
@@ -143,4 +150,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

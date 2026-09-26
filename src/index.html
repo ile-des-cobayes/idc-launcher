@@ -25,6 +25,30 @@
     <span class="shard shard-4"></span>
   </div>
 
+  <!-- Écran de mise à jour obligatoire : bloque l'accès au launcher tant que
+     la mise à jour n'est pas installée (voir verifierMiseAJour() dans main.js) -->
+  <section id="ecran-maj" class="ecran ecran--vertical cache">
+    <div class="marque">
+      <div class="marque-icone"><span>I</span></div>
+      <p class="marque-nom">L'ÎLE DES COBAYES</p>
+    </div>
+    <div class="connexion-intro">
+      <p class="jeu-eyebrow">Mise à jour requise</p>
+      <h1>Une nouvelle<br />version t'attend.</h1>
+      <p id="maj-version" class="accroche">Une mise à jour est disponible.</p>
+    </div>
+    <section id="maj-progress" class="launch-progress">
+      <div class="launch-progress-heading">
+        <span id="maj-progress-label" class="launch-progress-label">Téléchargement</span>
+        <span id="maj-progress-percent" class="launch-progress-percent">0%</span>
+      </div>
+      <div class="launch-progress-track">
+        <span id="maj-progress-fill" class="launch-progress-fill"></span>
+      </div>
+      <p id="maj-progress-detail" class="launch-progress-detail">Préparation du téléchargement...</p>
+    </section>
+  </section>
+
   <!-- Écran 1 : Connexion -->
   <section id="ecran-connexion" class="ecran ecran--vertical">
     <div class="connexion-orbite" aria-hidden="true"></div>

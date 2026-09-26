@@ -1,5 +1,6 @@
 use sqlx::{MySqlPool, Row};
 use serde::Serialize;
+use std::time::Duration;
 
 pub struct Database {
     pool: MySqlPool,
@@ -64,6 +65,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 discord_id VARCHAR(255) UNIQUE NOT NULL,
+                mc_uuid CHAR(36) UNIQUE NOT NULL,
                 username VARCHAR(255) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -193,9 +195,29 @@ impl Database {
         }))
     }
 
+    /// Crée un nouveau compte joueur.
+    ///
+    /// La colonne `mc_uuid` (UNIQUE, NOT NULL en base) doit être renseignée :
+    /// 1. On tente d'abord de récupérer le VRAI UUID Mojang du pseudo choisi
+    ///    (utile si le joueur a déjà un compte Minecraft "officiel" avec ce
+    ///    pseudo : il garde ainsi le même UUID que partout ailleurs).
+    /// 2. On ne l'utilise que s'il n'est pas déjà pris dans notre table
+    ///    `users` (cas rare : deux comptes Discord différents choisissent le
+    ///    même pseudo Minecraft, ou une collision avec un UUID déjà attribué
+    ///    aléatoirement avant ce correctif).
+    /// 3. Si l'API Mojang ne renvoie rien (pseudo inexistant côté Mojang,
+    ///    timeout, erreur réseau) ou que l'UUID trouvé est déjà pris, on
+    ///    retombe sur un UUID v4 aléatoire, garanti unique par une boucle de
+    ///    vérification en base.
     pub async fn create_user(&self, discord_id: &str, username: &str) -> Result<User, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO users (discord_id, username) VALUES (?, ?)")
+        let mc_uuid = match Self::fetch_mojang_uuid(username).await {
+            Some(mojang_uuid) if !self.mc_uuid_exists(&mojang_uuid).await? => mojang_uuid,
+            _ => self.generate_unique_uuid().await?,
+        };
+
+        let result = sqlx::query("INSERT INTO users (discord_id, mc_uuid, username) VALUES (?, ?, ?)")
             .bind(discord_id)
+            .bind(&mc_uuid)
             .bind(username)
             .execute(&self.pool)
             .await?;
@@ -208,6 +230,80 @@ impl Database {
             username: username.to_string(),
             created_at: chrono::Utc::now(),
         })
+    }
+
+    /// Vérifie si un `mc_uuid` donné est déjà utilisé dans la table `users`.
+    async fn mc_uuid_exists(&self, mc_uuid: &str) -> Result<bool, sqlx::Error> {
+        let row = sqlx::query("SELECT 1 FROM users WHERE mc_uuid = ? LIMIT 1")
+            .bind(mc_uuid)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.is_some())
+    }
+
+    /// Génère un UUID v4 garanti absent de la table `users`. La boucle ne
+    /// devrait quasiment jamais dépasser une itération vu l'espace d'un
+    /// UUID v4 (2^122 possibilités), mais on revérifie quand même par
+    /// prudence plutôt que de faire confiance à un simple "improbable".
+    async fn generate_unique_uuid(&self) -> Result<String, sqlx::Error> {
+        loop {
+            let candidate = uuid::Uuid::new_v4().to_string();
+            if !self.mc_uuid_exists(&candidate).await? {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    /// Interroge l'API Mojang pour savoir si `username` correspond à un vrai
+    /// compte Minecraft, et renvoie son UUID (avec tirets, format standard)
+    /// si c'est le cas.
+    ///
+    /// Renvoie `None` silencieusement dans tous les cas d'échec (pseudo
+    /// inexistant côté Mojang -> 404, timeout, API indisponible, réponse
+    /// malformée) : ce n'est qu'un bonus pour donner le "vrai" UUID quand
+    /// c'est possible, jamais un prérequis bloquant pour la création de
+    /// compte côté launcher.
+    async fn fetch_mojang_uuid(username: &str) -> Option<String> {
+        #[derive(serde::Deserialize)]
+        struct MojangProfile {
+            id: String,
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .ok()?;
+
+        let url = format!("https://api.mojang.com/users/profiles/minecraft/{username}");
+        let response = client.get(&url).send().await.ok()?;
+
+        if !response.status().is_success() {
+            // 404 = pseudo inexistant côté Mojang (le plus courant), ou API
+            // momentanément indisponible : dans les deux cas on retombe
+            // simplement sur un UUID aléatoire plus haut.
+            return None;
+        }
+
+        let profile: MojangProfile = response.json().await.ok()?;
+        Self::format_uuid_with_dashes(&profile.id)
+    }
+
+    /// L'API Mojang renvoie l'UUID sans tirets (32 caractères hexadécimaux).
+    /// Le reste du code (launcher, index.php, session.js, authenticate.js...)
+    /// travaille avec le format standard à tirets (8-4-4-4-12), donc on le
+    /// reformate ici une bonne fois pour toutes.
+    fn format_uuid_with_dashes(raw: &str) -> Option<String> {
+        if raw.len() != 32 || !raw.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        Some(format!(
+            "{}-{}-{}-{}-{}",
+            &raw[0..8],
+            &raw[8..12],
+            &raw[12..16],
+            &raw[16..20],
+            &raw[20..32]
+        ))
     }
 
     pub async fn update_username(&self, discord_id: &str, username: &str) -> Result<(), sqlx::Error> {
@@ -388,7 +484,7 @@ impl Database {
                 price - balance
             ));
         }
-        
+
 
         let next_balance = balance - price;
         sqlx::query("UPDATE wallets SET balance = ? WHERE discord_id = ?")
@@ -493,9 +589,9 @@ impl Database {
         let rows = sqlx::query(
             "SELECT mod_id, enabled FROM player_optional_mods WHERE discord_id = ?",
         )
-        .bind(discord_id)
-        .fetch_all(&self.pool)
-        .await?;
+            .bind(discord_id)
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut states = HashMap::new();
         for row in rows {
@@ -520,11 +616,11 @@ impl Database {
             "INSERT INTO player_optional_mods (discord_id, mod_id, enabled) VALUES (?, ?, ?) 
              ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)",
         )
-        .bind(discord_id)
-        .bind(mod_id)
-        .bind(enabled_int)
-        .execute(&self.pool)
-        .await?;
+            .bind(discord_id)
+            .bind(mod_id)
+            .bind(enabled_int)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }

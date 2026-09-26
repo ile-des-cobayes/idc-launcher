@@ -78,16 +78,22 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Décommentez et configurez ces lignes si vous activez la
-          # signature/mise à jour automatique (updater Tauri) :
-          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Clé privée + mot de passe générés via `npm run tauri signer generate`.
+          # Nécessaires pour signer les artefacts d'update (voir tauri.conf.json
+          # -> plugins.updater.pubkey pour la clé publique correspondante).
+          # Ajoute-les dans Settings > Secrets and variables > Actions de ce repo.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: app-v__VERSION__
           releaseName: 'idc-launcher v__VERSION__'
           releaseBody: 'Voir les fichiers ci-dessous pour télécharger cette version.'
-          releaseDraft: true
+          # IMPORTANT : le endpoint d'update pointe vers
+          # /releases/latest/download/latest.json, qui ne résout QUE les
+          # releases publiées (ni draft, ni prerelease). Si tu remets
+          # releaseDraft à true, les joueurs ne verront jamais la mise à jour
+          # tant que tu n'auras pas publié la release manuellement sur GitHub.
+          releaseDraft: false
           prerelease: false
           uploadPlainBinary: ${{ matrix.uploadPlainBinary }}
           args: ${{ matrix.args }}
-

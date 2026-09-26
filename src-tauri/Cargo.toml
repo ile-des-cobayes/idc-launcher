@@ -41,4 +41,7 @@ walkdir = "2.5"
 tempfile = "3.10"
 keyring = "3.0"
 discord-rich-presence = "1.1.0"
-
+# Auto-update : vérifie/télécharge/installe les nouvelles versions du launcher.
+tauri-plugin-updater = "2"
+# Permet de relancer le launcher automatiquement après une mise à jour.
+tauri-plugin-process = "2"

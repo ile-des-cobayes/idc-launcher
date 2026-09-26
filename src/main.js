@@ -2,6 +2,8 @@ const { invoke } = window.__TAURI__.core;
 const { openUrl } = window.__TAURI__.opener;
 const tauriWindow = window.__TAURI__.window;
 const tauriEvent = window.__TAURI__.event;
+const { check: verifierMajDisponible } = window.__TAURI__.updater;
+const { relaunch } = window.__TAURI__.process;
 
 const ecranConnexion = document.getElementById("ecran-connexion");
 const ecranPseudo = document.getElementById("ecran-pseudo");
@@ -78,6 +80,13 @@ const newsDetailTitle = document.getElementById("news-detail-title");
 const newsDetailContent = document.getElementById("news-detail-content");
 const btnBackToNews = document.getElementById("btn-back-to-news");
 
+const ecranMaj = document.getElementById("ecran-maj");
+const majVersionEl = document.getElementById("maj-version");
+const majProgressLabel = document.getElementById("maj-progress-label");
+const majProgressPercent = document.getElementById("maj-progress-percent");
+const majProgressFill = document.getElementById("maj-progress-fill");
+const majProgressDetail = document.getElementById("maj-progress-detail");
+
 // Lien d'invitation vers le Discord officiel : réutilisé partout où on doit
 // rediriger un joueur non membre (login, création de compte, lancement).
 const DISCORD_INVITE_URL = "https://discord.gg/KMBNxjnvxH";
@@ -142,7 +151,7 @@ async function afficherEcran(ecran) {
     await definirTailleFenetre(TAILLE_VERTICALE.largeur, TAILLE_VERTICALE.hauteur);
   }
 
-  [ecranConnexion, ecranPseudo, ecranConnecte].forEach((e) => e.classList.add("cache"));
+  [ecranConnexion, ecranPseudo, ecranConnecte, ecranMaj].forEach((e) => e.classList.add("cache"));
   ecran.classList.remove("cache");
 }
 
@@ -1090,8 +1099,72 @@ function revenirAListeNews() {
   activerOnglet(ongletNews, btnNavNews);
 }
 
-// La fenetre demarre au format vertical (ecran de connexion).
-definirTailleFenetre(TAILLE_VERTICALE.largeur, TAILLE_VERTICALE.hauteur);
+async function verifierMiseAJour() {
+  let update;
+  try {
+    update = await verifierMajDisponible();
+  } catch (e) {
+    console.warn("Vérification de mise à jour impossible :", e);
+    return false;
+  }
+
+  if (!update) {
+    return false;
+  }
+
+  await afficherEcran(ecranMaj);
+  majVersionEl.textContent = `Version ${update.version} disponible (tu as la ${update.currentVersion}). Installation en cours, merci de patienter...`;
+
+  let downloaded = 0;
+  let contentLength = 0;
+
+  try {
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case "Started":
+          contentLength = event.data.contentLength || 0;
+          majProgressLabel.textContent = "Téléchargement";
+          majProgressDetail.textContent = "Récupération de la nouvelle version...";
+          break;
+        case "Progress": {
+          downloaded += event.data.chunkLength;
+          const pct = contentLength
+              ? Math.min(100, Math.round((downloaded / contentLength) * 100))
+              : 0;
+          majProgressFill.style.width = `${pct}%`;
+          majProgressPercent.textContent = `${pct}%`;
+          break;
+        }
+        case "Finished":
+          majProgressLabel.textContent = "Installation";
+          majProgressPercent.textContent = "100%";
+          majProgressFill.style.width = "100%";
+          majProgressDetail.textContent = "Redémarrage du launcher...";
+          break;
+      }
+    });
+
+    await relaunch();
+  } catch (e) {
+    // Échec pendant le téléchargement/l'installation (et non pendant la
+    // simple vérification) : là on informe clairement, l'ancienne version
+    // continuant de tourner sans mise à jour tant que ce n'est pas résolu.
+    majProgressLabel.textContent = "Échec de la mise à jour";
+    majProgressDetail.textContent = `${e}`;
+    console.error("Échec de la mise à jour :", e);
+  }
+
+  return true;
+}
+
+(async () => {
+  const majEnCours = await verifierMiseAJour();
+  if (!majEnCours) {
+    // Pas de mise à jour (ou vérification impossible) : démarrage normal,
+    // écran de connexion au format vertical comme avant.
+    definirTailleFenetre(TAILLE_VERTICALE.largeur, TAILLE_VERTICALE.hauteur);
+  }
+})();
 
 btnDiscord.addEventListener("click", async () => {
   erreur.classList.add("cache");
