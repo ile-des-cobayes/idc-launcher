@@ -38,6 +38,30 @@ pub struct AppState {
     pub discord_rpc: Arc<DiscordRpc>,
 }
 
+impl AppState {
+    /// Attend que la connexion MySQL (lancée en tâche de fond dans `.setup()`)
+    /// soit prête, au lieu d'échouer immédiatement si une commande arrive
+    /// juste après le démarrage du launcher. Évite le "il faut réessayer une
+    /// fois" côté joueur.
+    pub async fn db_ready(&self) -> Result<(), String> {
+        const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+        const INTERVAL: std::time::Duration = std::time::Duration::from_millis(150);
+
+        let start = std::time::Instant::now();
+        loop {
+            if self.db.lock().await.is_some() {
+                return Ok(());
+            }
+            if start.elapsed() >= TIMEOUT {
+                return Err(
+                    "Connexion à la base de données non disponible (délai dépassé). Réessaie dans quelques secondes.".to_string(),
+                );
+            }
+            tokio::time::sleep(INTERVAL).await;
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Plus besoin de dotenv::dotenv().ok() ici : les valeurs du .env sont
