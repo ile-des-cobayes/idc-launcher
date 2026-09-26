@@ -74,23 +74,6 @@ jobs:
         shell: bash
         run: printf '%s\n' "${{ secrets.SRC_TAURI_ENV_FILE }}" > src-tauri/.env
 
-      - name: Écrire la clé de signature dans un fichier
-        # Passer la clé comme CHEMIN DE FICHIER plutôt que comme variable
-        # d'env multi-lignes évite un bug de troncature côté build AppImage
-        # sur Linux (le contenu passe par des sous-scripts bash internes qui
-        # peuvent mal ré-exporter une valeur multi-lignes).
-        #
-        # Le `sed` retire toute ligne vide en tête de fichier : une clé
-        # minisign/Tauri ne doit JAMAIS commencer par un saut de ligne, sinon
-        # le décodeur base64 échoue dès le premier octet (symbole 10 =
-        # line feed à l'offset 0). C'est ce qui provoquait l'échec du build
-        # Linux uniquement — le sous-script de bundling AppImage est plus
-        # strict que le chemin de signature macOS sur ce point.
-        shell: bash
-        run: |
-          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" \
-            | sed '/./,$!d' > "${{ runner.temp }}/idc-launcher.key"
-
       - name: Build & bundle Tauri
         uses: tauri-apps/tauri-action@v0
         env:
@@ -101,14 +84,6 @@ jobs:
           tagName: app-v__VERSION__
           releaseName: 'idc-launcher v__VERSION__'
           releaseBody: 'Voir les fichiers ci-dessous pour télécharger cette version.'
-          # IMPORTANT : releaseDraft est maintenant à true volontairement.
-          # La release est créée en brouillon (visible seulement par les
-          # collaborateurs du repo) et n'est PAS publiée automatiquement.
-          # Tant qu'elle n'est pas publiée manuellement sur GitHub, elle ne
-          # correspondra à aucune release "latest", donc l'endpoint updater
-          # (/releases/latest/download/latest.json) ne la verra pas non plus
-          # — les joueurs ne recevront la mise à jour qu'après validation
-          # manuelle de la release (bouton "Publish release" sur GitHub).
           releaseDraft: true
           prerelease: false
           uploadPlainBinary: ${{ matrix.uploadPlainBinary }}
